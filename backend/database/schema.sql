@@ -1,0 +1,156 @@
+-- -- ============================================================================
+-- -- ETHIO-ORDER PRO V2.0 - AUTHORITATIVE DATABASE SCHEMA SPECIFICATION
+-- -- SOURCE FILE: backend/database/schema.sql
+-- -- ============================================================================
+
+-- SET FOREIGN_KEY_CHECKS = 0;
+-- DROP TABLE IF EXISTS notifications;
+-- DROP TABLE IF EXISTS audit_log;
+-- DROP TABLE IF EXISTS discount_requests;
+-- DROP TABLE IF EXISTS order_items;
+-- DROP TABLE IF EXISTS orders;
+-- DROP TABLE IF EXISTS menu_items;
+-- DROP TABLE IF EXISTS tables;
+-- DROP TABLE IF EXISTS sessions;
+-- DROP TABLE IF EXISTS staff_roles;
+-- DROP TABLE IF EXISTS staff;
+-- SET FOREIGN_KEY_CHECKS = 1;
+
+-- -- 1. STAFF / USER ACCOUNTS MANAGEMENT [cite: 263]
+-- CREATE TABLE staff (
+--     staff_id INT PRIMARY KEY AUTO_INCREMENT,
+--     full_name VARCHAR(100) NOT NULL,
+--     username VARCHAR(50) NOT NULL UNIQUE,
+--     password_hash VARCHAR(255) NOT NULL, -- Cryptographically secure bcrypt hash string [cite: 113, 263]
+--     phone VARCHAR(20) NULL,
+--     employee_id VARCHAR(30) NULL,
+--     hire_date DATE NULL,
+--     status ENUM('Active', 'Inactive') DEFAULT 'Active',
+--     created_by INT NULL,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     FOREIGN KEY (created_by) REFERENCES staff (staff_id) ON DELETE SET NULL
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -- 2. ROLE ASSIGNMENTS MULTI-TENANCY MATRIX [cite: 265]
+-- CREATE TABLE staff_roles (
+--     id INT PRIMARY KEY AUTO_INCREMENT,
+--     staff_id INT NOT NULL,
+--     role ENUM('Manager', 'Waiter', 'Kitchen', 'Cashier') NOT NULL,
+--     UNIQUE KEY unique_staff_role (staff_id, role),
+--     FOREIGN KEY (staff_id) REFERENCES staff (staff_id) ON DELETE CASCADE
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -- 3. ACTIVE SESSION STATE & SECURITY TRACKING [cite: 266]
+-- CREATE TABLE sessions (
+--     session_id VARCHAR(128) PRIMARY KEY,
+--     staff_id INT NOT NULL,
+--     login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+--     terminal_ip VARCHAR(45) NOT NULL,
+--     is_active BOOLEAN DEFAULT TRUE,
+--     FOREIGN KEY (staff_id) REFERENCES staff (staff_id) ON DELETE CASCADE
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -- 4. RESTAURANT PHYSICAL FLOOR LAYOUT CONFIGURATION [cite: 267]
+-- CREATE TABLE tables (
+--     table_id INT PRIMARY KEY AUTO_INCREMENT,
+--     table_number VARCHAR(10) NOT NULL UNIQUE,
+--     capacity INT DEFAULT 4 CHECK (capacity > 0),
+--     status ENUM('Available', 'Occupied', 'Awaiting_Bill') DEFAULT 'Available',
+--     assigned_waiter_id INT NULL,
+--     FOREIGN KEY (assigned_waiter_id) REFERENCES staff (staff_id) ON DELETE SET NULL
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -- 5. MENU & PRODUCT CATALOG SPECIFICATION [cite: 269]
+-- CREATE TABLE menu_items (
+--     item_id INT PRIMARY KEY AUTO_INCREMENT,
+--     name VARCHAR(100) NOT NULL,
+--     category ENUM('Food', 'Drink', 'Pastry') NOT NULL,
+--     price DECIMAL(10, 2) NOT NULL,
+--     description TEXT NULL,
+--     image_url VARCHAR(255) NULL,
+--     is_available BOOLEAN DEFAULT TRUE,
+--     display_order INT DEFAULT 0,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+--     CONSTRAINT chk_menu_price CHECK (price > 0.00)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -- 6. MASTER TRANSACTION ORDER LEDGER [cite: 270, 271]
+-- CREATE TABLE orders (
+--     order_id INT PRIMARY KEY AUTO_INCREMENT,
+--     table_id INT NOT NULL,
+--     waiter_id INT NOT NULL,
+--     cashier_id INT NULL,
+--     status ENUM('Pending', 'Cooking', 'Served', 'Awaiting_Bill', 'Paid') DEFAULT 'Pending',
+--     payment_method ENUM('Cash', 'Telebirr', 'CBE_Birr', 'Pending') DEFAULT 'Pending',
+--     payment_ref VARCHAR(100) NULL, -- Target reference trace for external verification [cite: 229, 230]
+--     subtotal DECIMAL(10, 2) DEFAULT 0.00 CHECK (subtotal >= 0.00),
+--     service_charge DECIMAL(10, 2) DEFAULT 0.00 CHECK (service_charge >= 0.00),
+--     vat_amount DECIMAL(10, 2) DEFAULT 0.00 CHECK (vat_amount >= 0.00),
+--     total_amount DECIMAL(10, 2) DEFAULT 0.00 CHECK (total_amount >= 0.00),
+--     discount_amount DECIMAL(10, 2) DEFAULT 0.00 CHECK (discount_amount >= 0.00),
+--     discount_by INT NULL,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     paid_at TIMESTAMP NULL,
+--     FOREIGN KEY (table_id) REFERENCES tables (table_id),
+--     FOREIGN KEY (waiter_id) REFERENCES staff (staff_id),
+--     FOREIGN KEY (cashier_id) REFERENCES staff (staff_id),
+--     FOREIGN KEY (discount_by) REFERENCES staff (staff_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -- 7. ORDER LINE-ITEM SNAPSHOT MATRIX [cite: 272]
+-- CREATE TABLE order_items (
+--     id INT PRIMARY KEY AUTO_INCREMENT,
+--     order_id INT NOT NULL,
+--     item_id INT NOT NULL,
+--     quantity INT NOT NULL,
+--     unit_price DECIMAL(10, 2) NOT NULL, -- Captured price at order time [cite: 30]
+--     note VARCHAR(255) NULL,
+--     CONSTRAINT chk_order_qty CHECK (quantity > 0),
+--     CONSTRAINT chk_unit_price CHECK (unit_price > 0.00),
+--     FOREIGN KEY (order_id) REFERENCES orders (order_id) ON DELETE CASCADE,
+--     FOREIGN KEY (item_id) REFERENCES menu_items (item_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -- 8. DISCOUNT APPROVAL REMOTES TRACKER [cite: 273, 274]
+-- CREATE TABLE discount_requests (
+--     id INT PRIMARY KEY AUTO_INCREMENT,
+--     order_id INT NOT NULL,
+--     requested_by INT NOT NULL,
+--     discount_amount DECIMAL(10, 2) NOT NULL,
+--     reason VARCHAR(255) NOT NULL,
+--     status ENUM('Pending', 'Approved', 'Rejected') DEFAULT 'Pending',
+--     reviewed_by INT NULL,
+--     reviewed_at TIMESTAMP NULL,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     CONSTRAINT chk_discount_req CHECK (discount_amount > 0.00),
+--     FOREIGN KEY (order_id) REFERENCES orders (order_id) ON DELETE CASCADE,
+--     FOREIGN KEY (requested_by) REFERENCES staff (staff_id),
+--     FOREIGN KEY (reviewed_by) REFERENCES staff (staff_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -- 9. IMMUTABLE SECURITY DATA AUDIT TRAIL LOG [cite: 275, 276]
+-- CREATE TABLE audit_log (
+--     log_id INT PRIMARY KEY AUTO_INCREMENT,
+--     staff_id INT NULL,
+--     action VARCHAR(100) NOT NULL,
+--     entity_type VARCHAR(50) NOT NULL,
+--     entity_id INT NULL,
+--     details JSON NULL, -- Contains raw unstructured telemetry data [cite: 276]
+--     ip_address VARCHAR(45) NOT NULL,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     FOREIGN KEY (staff_id) REFERENCES staff (staff_id) ON DELETE SET NULL
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -- 10. REAL-TIME ROLE BROADCAST NOTIFICATIONS MODULE [cite: 277]
+-- CREATE TABLE notifications (
+--     notification_id INT PRIMARY KEY AUTO_INCREMENT,
+--     recipient_role ENUM('Manager', 'Waiter', 'Kitchen', 'Cashier', 'All') NOT NULL,
+--     recipient_id INT NULL,
+--     message VARCHAR(255) NOT NULL,
+--     is_read BOOLEAN DEFAULT FALSE,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     expires_at TIMESTAMP NULL,
+--     FOREIGN KEY (recipient_id) REFERENCES staff (staff_id) ON DELETE CASCADE
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
