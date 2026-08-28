@@ -7,17 +7,17 @@ const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Fetch menu options from API on initial load
+  // Load available menu items
   useEffect(() => {
     fetch('http://localhost:5000/api/v1/menu', {
       headers: { Authorization: `Bearer ${token || localStorage.getItem('token')}` },
     })
       .then((res) => res.json())
       .then((data) => setMenuItems(Array.isArray(data) ? data : []))
-      .catch((err) => console.error('Error loading menu:', err));
+      .catch((err) => console.error('Menu load error:', err));
   }, [token]);
 
-  // Add item to cart or increment quantity if already present
+  // Add item or increment quantity
   const addToCart = (item) => {
     setCart((prev) => {
       const exists = prev.find((i) => i.item_id === item.item_id);
@@ -28,7 +28,7 @@ const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
     });
   };
 
-  // Adjust item quantity (+ / -)
+  // Adjust quantity (+ / -)
   const updateQuantity = (itemId, delta) => {
     setCart((prev) =>
       prev
@@ -37,22 +37,22 @@ const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
     );
   };
 
-  // Remove individual item from cart
+  // Remove individual item
   const removeItem = (itemId) => {
     setCart((prev) => prev.filter((i) => i.item_id !== itemId));
   };
 
-  // Clear all items in cart
+  // Clear entire cart
   const clearCart = () => {
     setCart([]);
   };
 
-  // Update special note for a specific item
+  // Update kitchen notes per item
   const updateNote = (itemId, note) => {
     setCart((prev) => prev.map((i) => (i.item_id === itemId ? { ...i, note } : i)));
   };
 
-  // Calculate cart totals
+  // Calculate bill totals
   const subtotal = cart.reduce((acc, i) => acc + parseFloat(i.price) * i.quantity, 0);
 
   // Submit order to API
@@ -64,12 +64,12 @@ const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
       return alert(language === 'am' ? 'ትዕዛዙ ባዶ ነው' : 'Cart is empty!');
     }
 
-    // Dynamic resolution of logged-in waiter ID with localStorage fallback
+    // Safely retrieve staff_id matching the schema key
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const activeWaiterId = user?.user_id || user?.id || storedUser.user_id || storedUser.id;
+    const activeStaffId = user?.staff_id || user?.id || storedUser.staff_id || storedUser.id;
 
-    if (!activeWaiterId) {
-      return alert('User session invalid or waiter ID missing. Please log out and log back in.');
+    if (!activeStaffId) {
+      return alert('User session invalid. Staff ID is missing from local storage.');
     }
 
     setLoading(true);
@@ -83,7 +83,7 @@ const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
         },
         body: JSON.stringify({
           table_id: selectedTable.table_id,
-          waiter_id: activeWaiterId,
+          waiter_id: activeStaffId, // Matches staff_id constraint
           items: cart,
           subtotal: subtotal,
           service_charge: subtotal * 0.1,
@@ -102,7 +102,7 @@ const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
         alert(`Error: ${data.message || 'Failed to send order'}`);
       }
     } catch (err) {
-      alert('Network error. Check if backend server is running.');
+      alert('Network error. Check backend server.');
     } finally {
       setLoading(false);
     }
@@ -131,7 +131,7 @@ const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
         </div>
       </div>
 
-      {/* Cart Summary Section */}
+      {/* Cart Ticket Summary */}
       <div className="bg-white p-4 border rounded shadow-sm space-y-4">
         <div className="flex justify-between items-center border-b pb-2">
           <h2 className="text-sm font-bold text-gray-800">
@@ -151,7 +151,7 @@ const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
           )}
         </div>
 
-        {/* Cart Items List */}
+        {/* Selected Items */}
         <div className="space-y-3 max-h-60 overflow-y-auto">
           {cart.length === 0 ? (
             <p className="text-xs text-gray-400 italic text-center py-4">
@@ -203,7 +203,7 @@ const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
           )}
         </div>
 
-        {/* Checkout & Total Summary */}
+        {/* Total Summary */}
         <div className="border-t pt-3">
           <div className="flex justify-between font-bold text-sm mb-3">
             <span>Subtotal:</span>
