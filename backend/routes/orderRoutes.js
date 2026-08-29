@@ -1,4 +1,3 @@
-
 const express = require('express');
 
 const router = express.Router();
@@ -13,9 +12,11 @@ const {
   getKitchenOrders,
   getLiveOrders,
   updateOrderStatus,
+  requestBill,
   getUnreadNotifications,
   markNotificationAsRead,
 } = require('../controllers/orderController');
+
 
 /*
 |--------------------------------------------------------------------------
@@ -32,6 +33,7 @@ router.post(
   createOrder
 );
 
+
 /*
  * Kitchen orders
  */
@@ -40,6 +42,7 @@ router.get(
   authenticateToken,
   getKitchenOrders
 );
+
 
 /*
  * Live orders
@@ -50,14 +53,33 @@ router.get(
   getLiveOrders
 );
 
+
+/*
+ * Request bill
+ *
+ * Only a Waiter can request the bill.
+ *
+ * The order must already be in "Served" status.
+ */
+router.post(
+  '/:orderId/request-bill',
+  authenticateToken,
+  requireRole(['Waiter']),
+  requestBill
+);
+
+
 /*
  * Update order status
+ *
+ * Kept for Kitchen/order status operations.
  */
 router.put(
   '/:orderId/status',
   authenticateToken,
   updateOrderStatus
 );
+
 
 /*
 |--------------------------------------------------------------------------
@@ -67,9 +89,6 @@ router.put(
 
 /*
  * Get unread notifications
- *
- * The authentication middleware decodes the JWT
- * and puts the user information into req.user.
  */
 router.get(
   '/notifications',
@@ -77,12 +96,9 @@ router.get(
   getUnreadNotifications
 );
 
+
 /*
  * Mark a notification as read
- *
- * IMPORTANT:
- * authenticateToken must run BEFORE markNotificationAsRead
- * so that req.user.staff_id exists.
  */
 router.put(
   '/notifications/:notificationId/read',
@@ -90,5 +106,5 @@ router.put(
   markNotificationAsRead
 );
 
-module.exports = router;
 
+module.exports = router;

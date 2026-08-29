@@ -7,6 +7,7 @@ import Login from './views/Login/Login';
 import DashboardOverview from './views/Manager/DashboardOverview';
 import WaiterWorkspace from './views/Waiter/WaiterWorkspace';
 import KitchenView from './views/Kitchen/KitchenView';
+import AwaitingBilling from './views/Cashier/AwaitingBilling';
 function App() {
   return (
     <Routes>
@@ -25,6 +26,10 @@ function App() {
 
       <Route element={<ProtectedRoute allowedRoles={['Kitchen']} />}>
         <Route path="/kitchen" element={<KitchenView />} />
+      </Route>
+
+      <Route element={<ProtectedRoute allowedRoles={['Cashier']} />}>
+        <Route path="/Cashier" element={<AwaitingBilling/>} />
       </Route>
 
       {/* Default Fallback Redirect */}
