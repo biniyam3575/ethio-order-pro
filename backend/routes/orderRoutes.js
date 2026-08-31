@@ -1,3 +1,4 @@
+
 const express = require('express');
 
 const router = express.Router();
@@ -13,20 +14,25 @@ const {
   getLiveOrders,
   updateOrderStatus,
   requestBill,
+} = require('../controllers/orderController');
+
+const {
+  getAwaitingBillOrders,
+  processPayment,
+} = require('../controllers/billingController');
+
+const {
   getUnreadNotifications,
   markNotificationAsRead,
-} = require('../controllers/orderController');
+} = require('../controllers/notificationController');
 
 
 /*
 |--------------------------------------------------------------------------
-| ORDER ROUTES
+| CREATE ORDER
 |--------------------------------------------------------------------------
 */
 
-/*
- * Create a new order
- */
 router.post(
   '/',
   authenticateToken,
@@ -35,8 +41,11 @@ router.post(
 
 
 /*
- * Kitchen orders
- */
+|--------------------------------------------------------------------------
+| KITCHEN ORDERS
+|--------------------------------------------------------------------------
+*/
+
 router.get(
   '/kitchen',
   authenticateToken,
@@ -45,8 +54,11 @@ router.get(
 
 
 /*
- * Live orders
- */
+|--------------------------------------------------------------------------
+| LIVE ORDERS
+|--------------------------------------------------------------------------
+*/
+
 router.get(
   '/live',
   authenticateToken,
@@ -55,12 +67,22 @@ router.get(
 
 
 /*
- * Request bill
- *
- * Only a Waiter can request the bill.
- *
- * The order must already be in "Served" status.
- */
+|--------------------------------------------------------------------------
+| REQUEST BILL
+|--------------------------------------------------------------------------
+|
+| Flow:
+|
+| Served
+|   ↓
+| Awaiting_Bill
+|   ↓
+| Cashier
+|
+| Only the waiter can request the bill.
+|
+*/
+
 router.post(
   '/:orderId/request-bill',
   authenticateToken,
@@ -70,36 +92,55 @@ router.post(
 
 
 /*
- * Update order status
- *
- * Kept for Kitchen/order status operations.
- */
-router.put(
-  '/:orderId/status',
+|--------------------------------------------------------------------------
+| CASHIER - AWAITING BILL
+|--------------------------------------------------------------------------
+|
+| GET /api/v1/orders/awaiting-bill
+|
+| Cashiers and Managers can see orders waiting for payment.
+|
+*/
+
+router.get(
+  '/awaiting-bill',
   authenticateToken,
-  updateOrderStatus
+  requireRole(['Cashier', 'Manager']),
+  getAwaitingBillOrders
 );
 
 
 /*
 |--------------------------------------------------------------------------
-| NOTIFICATION ROUTES
+| CASHIER - PROCESS PAYMENT
+|--------------------------------------------------------------------------
+|
+| POST /api/v1/orders/:orderId/pay
+|
+| Cashier or Manager finalizes payment.
+|
+*/
+
+router.post(
+  '/:orderId/pay',
+  authenticateToken,
+  requireRole(['Cashier', 'Manager']),
+  processPayment
+);
+
+
+/*
+|--------------------------------------------------------------------------
+| NOTIFICATIONS
 |--------------------------------------------------------------------------
 */
 
-/*
- * Get unread notifications
- */
 router.get(
   '/notifications',
   authenticateToken,
   getUnreadNotifications
 );
 
-
-/*
- * Mark a notification as read
- */
 router.put(
   '/notifications/:notificationId/read',
   authenticateToken,
@@ -107,4 +148,21 @@ router.put(
 );
 
 
+/*
+|--------------------------------------------------------------------------
+| UPDATE ORDER STATUS
+|--------------------------------------------------------------------------
+|
+| Used by Kitchen / other authorized order operations.
+|
+*/
+
+router.put(
+  '/:orderId/status',
+  authenticateToken,
+  updateOrderStatus
+);
+
+
 module.exports = router;
+
