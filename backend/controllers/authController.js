@@ -16,7 +16,7 @@ const login = async (req, res) => {
     const staffQuery = `
       SELECT s.staff_id, s.full_name, TRIM(s.username) AS username, s.password_hash, s.status
       FROM staff s
-      WHERE LOWER(s.username) = LOWER($1)
+      WHERE LOWER(TRIM(s.username)) = LOWER(TRIM($1))
     `;
     const { rows } = await pool.query(staffQuery, [username]);
 

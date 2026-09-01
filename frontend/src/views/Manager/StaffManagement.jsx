@@ -2,6 +2,8 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
 const StaffManagement = () => {
+  const { token, user } = useContext(AuthContext);
+
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -15,34 +17,7 @@ const StaffManagement = () => {
   const [role, setRole] = useState('Waiter');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { token } = useContext(AuthContext);
-
-
-  const handleDeleteStaff = async (staffId, fullName) => {
-  const confirmed = window.confirm(
-    `⚠️ WARNING: Are you sure you want to permanently delete user "${fullName}"?\n\nThis action cannot be undone.`
-  );
-
-  if (!confirmed) return;
-
-  try {
-    const response = await fetch(`http://localhost:5000/api/v1/staff/${staffId}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${token || localStorage.getItem('token')}`,
-      },
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) throw new Error(data.message);
-
-    setSuccess(`Account for ${fullName} deleted permanently.`);
-    fetchStaff();
-  } catch (err) {
-    alert(`❌ Action Blocked:\n${err.message}`);
-  }
-};
+  const isOwner = user?.roles?.includes('Owner');
 
   // Helper to format roles safely
   const formatRoles = (roles) => {
@@ -56,34 +31,12 @@ const StaffManagement = () => {
     return String(roles);
   };
 
-  // Handler to toggle user status
-const handleToggleStatus = async (staffId, currentStatus) => {
-  const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
-
-  try {
-    const response = await fetch(`http://localhost:5000/api/v1/staff/${staffId}/status`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token || localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify({ status: newStatus }),
-    });
-
-    if (!response.ok) throw new Error('Failed to update status');
-    
-    // Refresh the roster
-    fetchStaff();
-  } catch (err) {
-    alert(err.message);
-  }
-};
   // Fetch staff list from backend with Authorization header
   const fetchStaff = async () => {
     try {
       const response = await fetch('http://localhost:5000/api/v1/staff', {
         headers: {
-          'Authorization': `Bearer ${token || localStorage.getItem('token')}`,
+          Authorization: `Bearer ${token || localStorage.getItem('token')}`,
         },
       });
       const data = await response.json();
@@ -98,9 +51,9 @@ const handleToggleStatus = async (staffId, currentStatus) => {
 
   useEffect(() => {
     fetchStaff();
-  }, []);
+  }, [token]);
 
-  // Handle staff creation with Authorization header
+  // Handle staff creation
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     setError('');
@@ -112,7 +65,7 @@ const handleToggleStatus = async (staffId, currentStatus) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token || localStorage.getItem('token')}`,
+          Authorization: `Bearer ${token || localStorage.getItem('token')}`,
         },
         body: JSON.stringify({
           full_name: fullName,
@@ -132,13 +85,61 @@ const handleToggleStatus = async (staffId, currentStatus) => {
       setPassword('');
       setPhone('');
       setRole('Waiter');
-      
-      // Refresh list
+
       fetchStaff();
     } catch (err) {
       setError(err.message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Handler to toggle user status
+  const handleToggleStatus = async (staffId, currentStatus) => {
+    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/v1/staff/${staffId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to update status');
+
+      fetchStaff();
+    } catch (err) {
+      alert(`❌ Error: ${err.message}`);
+    }
+  };
+
+  // Handler to delete staff user
+  const handleDeleteStaff = async (staffId, fullName) => {
+    const confirmed = window.confirm(
+      `⚠️ WARNING: Are you sure you want to permanently delete user "${fullName}"?\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/v1/staff/${staffId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token || localStorage.getItem('token')}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to delete user.');
+
+      setSuccess(`Account for ${fullName} deleted permanently.`);
+      fetchStaff();
+    } catch (err) {
+      alert(`❌ Action Blocked:\n${err.message}`);
     }
   };
 
@@ -200,16 +201,18 @@ const handleToggleStatus = async (staffId, currentStatus) => {
           </div>
 
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700">Assigned Role</label>
+            <label className="block text-sm font-medium text-gray-700">Assigned Operational Station / Role</label>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
               className="mt-1 w-full border border-gray-300 rounded p-2 focus:ring-blue-500 text-gray-900"
             >
               <option value="Waiter">Waitstaff</option>
-              <option value="Kitchen">Kitchen Staff</option>
+              <option value="Kitchen">Kitchen Station</option>
+              <option value="Bar">Bar Station</option>
+              <option value="Hot Drinks">Hot Drinks Station</option>
               <option value="Cashier">Cashier</option>
-              <option value="Manager">Manager</option>
+              {isOwner && <option value="General Manager">General Manager</option>}
             </select>
           </div>
 
@@ -238,7 +241,7 @@ const handleToggleStatus = async (staffId, currentStatus) => {
                 <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-600 uppercase">
                   <th className="py-3 px-4">Name</th>
                   <th className="py-3 px-4">Username</th>
-                  <th className="py-3 px-4">Role(s)</th>
+                  <th className="py-3 px-4">Role / Station</th>
                   <th className="py-3 px-4">Phone</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Action</th>
@@ -262,25 +265,31 @@ const handleToggleStatus = async (staffId, currentStatus) => {
                         {staff.status}
                       </span>
                     </td>
-                    
-                    <td className="py-3 px-4 flex gap-2">
-                      <button
-                        onClick={() => handleToggleStatus(staff.staff_id, staff.status)}
-                        className={`px-3 py-1 text-xs font-medium rounded transition ${
-                          staff.status === 'Active'
-                            ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                            : 'bg-green-100 text-green-700 hover:bg-green-200'
-                        }`}
-                      >
-                        {staff.status === 'Active' ? 'Deactivate' : 'Activate'}
-                      </button>
 
-                      <button
-                        onClick={() => handleDeleteStaff(staff.staff_id, staff.full_name)}
-                        className="px-3 py-1 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded transition"
-                      >
-                        Delete
-                      </button>
+                    <td className="py-3 px-4 flex gap-2">
+                      {staff.staff_id === user?.staff_id ? (
+                        <span className="text-xs text-gray-400 italic py-1">Current Session</span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleToggleStatus(staff.staff_id, staff.status)}
+                            className={`px-3 py-1 text-xs font-medium rounded transition ${
+                              staff.status === 'Active'
+                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                : 'bg-green-100 text-green-700 hover:bg-green-200'
+                            }`}
+                          >
+                            {staff.status === 'Active' ? 'Deactivate' : 'Activate'}
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteStaff(staff.staff_id, staff.full_name)}
+                            className="px-3 py-1 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded transition"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

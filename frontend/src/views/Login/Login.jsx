@@ -35,18 +35,21 @@ const Login = () => {
       loginUser(data);
 
       // 2. Redirect automatically based on primary role
-      const primaryRole = data.user.roles[0];
-      if (primaryRole === 'Manager') {
-        navigate('/manager');
-      } else if (primaryRole === 'Waiter') {
-        navigate('/waiter');
-      } else if (primaryRole === 'Kitchen') {
-        navigate('/kitchen');
-      } else if (primaryRole === 'Cashier') {
-        navigate('/cashier');
-      } else {
-        navigate('/login');
-      }
+    const primaryRole = data.user.roles[0];
+
+    if (primaryRole === 'Owner') {
+      navigate('/owner'); // or navigate('/manager');
+    } else if (primaryRole === 'Manager') {
+      navigate('/manager');
+    } else if (primaryRole === 'Waiter') {
+      navigate('/waiter');
+    } else if (primaryRole === 'Kitchen') {
+      navigate('/kitchen');
+    } else if (primaryRole === 'Cashier') {
+      navigate('/cashier');
+    } else {
+      navigate('/login');
+    }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -114,12 +117,21 @@ const Login = () => {
             PORTFOLIO DEMO ACCOUNTS (ONE-CLICK)
           </p>
           <div className="grid grid-cols-2 gap-2 text-xs">
+            {/* Added Owner Demo Button */}
+            <button
+              type="button"
+              onClick={() => fillDemoCredentials('owner', '123456')}
+              className="bg-indigo-100 text-indigo-700 p-2 rounded text-center hover:bg-indigo-200 font-medium"
+            >
+              👑 Owner
+            </button>
+            
             <button
               type="button"
               onClick={() => fillDemoCredentials('admin', '123456')}
               className="bg-purple-100 text-purple-700 p-2 rounded text-center hover:bg-purple-200 font-medium"
             >
-              👑 Manager
+              💼 Manager
             </button>
             <button
               type="button"
@@ -138,7 +150,7 @@ const Login = () => {
             <button
               type="button"
               onClick={() => fillDemoCredentials('cashier1', '123456')}
-              className="bg-blue-100 text-blue-700 p-2 rounded text-center hover:bg-blue-200 font-medium"
+              className="bg-blue-100 text-blue-700 p-2 rounded text-center hover:bg-blue-200 font-medium col-span-2"
             >
               💳 Cashier
             </button>

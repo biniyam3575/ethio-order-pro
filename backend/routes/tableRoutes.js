@@ -5,9 +5,12 @@ const {
   createTable,
   deleteTable,
 } = require('../controllers/tableController');
+const { authenticateToken, requireManager } = require('../middleware/auth');
+
+router.use(authenticateToken);
 
 router.get('/', getAllTables);
-router.post('/', createTable);
-router.delete('/:id', deleteTable);
+router.post('/', requireManager, createTable);
+router.delete('/:id', requireManager, deleteTable);
 
 module.exports = router;

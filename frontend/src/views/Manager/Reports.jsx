@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
 const Reports = () => {
-  const [data, setData] = useState({ metrics: {}, topItems: [] });
+  const [data, setData] = useState({ metrics: {}, paymentBreakdown: [], topItems: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { token } = useContext(AuthContext);
@@ -29,11 +29,11 @@ const Reports = () => {
   if (loading) return <p className="text-gray-500">Loading sales analytics...</p>;
   if (error) return <div className="bg-red-100 text-red-700 p-3 rounded">{error}</div>;
 
-  const { metrics, topItems } = data;
+  const { metrics, paymentBreakdown = [], topItems = [] } = data;
 
   return (
     <div className="space-y-6">
-      {/* KPI Cards */}
+      {/* KPI Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
           <h3 className="text-sm font-semibold text-gray-500 uppercase">Total Revenue</h3>
@@ -44,9 +44,7 @@ const Reports = () => {
 
         <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
           <h3 className="text-sm font-semibold text-gray-500 uppercase">Completed Orders</h3>
-          <p className="text-3xl font-bold text-blue-600 mt-2">
-            {metrics.total_orders || 0}
-          </p>
+          <p className="text-3xl font-bold text-blue-600 mt-2">{metrics.total_orders || 0}</p>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
@@ -57,20 +55,46 @@ const Reports = () => {
         </div>
       </div>
 
-      {/* Top Performing Items Table */}
-      <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">🔥 Top Selling Menu Items</h3>
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-600 uppercase">
-              <th className="py-3 px-4">Item Name</th>
-              <th className="py-3 px-4">Units Sold</th>
-              <th className="py-3 px-4">Total Generated</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 text-sm">
-            {topItems.length > 0 ? (
-              topItems.map((item, idx) => (
+      {/* Payment Method Breakdown & Top Items Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Payment Methods */}
+        <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+          <h3 className="text-lg font-bold text-gray-800 mb-4">💳 Revenue by Payment Type</h3>
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-600 uppercase">
+                <th className="py-3 px-4">Method</th>
+                <th className="py-3 px-4">Orders</th>
+                <th className="py-3 px-4">Total Collected</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 text-sm">
+              {paymentBreakdown.map((pm, idx) => (
+                <tr key={idx}>
+                  <td className="py-3 px-4 font-medium">{pm.payment_method || 'Cash'}</td>
+                  <td className="py-3 px-4">{pm.order_count}</td>
+                  <td className="py-3 px-4 font-semibold text-green-700">
+                    {parseFloat(pm.total_collected).toFixed(2)} ETB
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Top Items */}
+        <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+          <h3 className="text-lg font-bold text-gray-800 mb-4">🔥 Top Selling Menu Items</h3>
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-600 uppercase">
+                <th className="py-3 px-4">Item</th>
+                <th className="py-3 px-4">Qty Sold</th>
+                <th className="py-3 px-4">Total Sales</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 text-sm">
+              {topItems.map((item, idx) => (
                 <tr key={idx}>
                   <td className="py-3 px-4 font-medium">{item.name}</td>
                   <td className="py-3 px-4">{item.total_quantity}</td>
@@ -78,16 +102,10 @@ const Reports = () => {
                     {parseFloat(item.total_sales).toFixed(2)} ETB
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="3" className="py-4 text-center text-gray-500">
-                  No completed sales recorded yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

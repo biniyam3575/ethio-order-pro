@@ -4,16 +4,24 @@ import StaffManagement from './StaffManagement';
 import MenuManagement from './MenuManagement';
 import TableConfig from './TableConfig';
 import Reports from './Reports';
+import DiscountApprovals from './DiscountApprovals';
+import AuditLogs from './AuditLogs';
 
 const DashboardOverview = () => {
   const { user, logoutUser } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('staff');
 
+  // Check if current logged-in user has the Owner role
+  const isOwner = user?.roles?.includes('Owner');
+
+  // Dynamically filter tabs based on role
   const tabs = [
     { id: 'staff', label: '👥 Staff Roster' },
     { id: 'menu', label: '🍽️ Menu Management' },
     { id: 'tables', label: '🪑 Floor Plan & Tables' },
+    { id: 'discounts', label: '🏷️ Discount Requests' },
     { id: 'reports', label: '📊 Sales & Analytics' },
+    ...(isOwner ? [{ id: 'audit', label: '🛡️ Audit Trail' }] : []),
   ];
 
   return (
@@ -22,7 +30,9 @@ const DashboardOverview = () => {
         {/* Header Bar */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-6 rounded-lg shadow-sm border border-gray-200 gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">👑 Manager Workspace</h1>
+            <h1 className="text-2xl font-bold text-gray-800">
+              {isOwner ? '👑 Owner Workspace' : '💼 Manager Workspace'}
+            </h1>
             <p className="text-sm text-gray-500">
               Logged in as <span className="font-semibold text-gray-700">{user?.full_name}</span>
             </p>
@@ -57,7 +67,9 @@ const DashboardOverview = () => {
           {activeTab === 'staff' && <StaffManagement />}
           {activeTab === 'menu' && <MenuManagement />}
           {activeTab === 'tables' && <TableConfig />}
+          {activeTab === 'discounts' && <DiscountApprovals />}
           {activeTab === 'reports' && <Reports />}
+          {activeTab === 'audit' && isOwner && <AuditLogs />}
         </div>
       </div>
     </div>

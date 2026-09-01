@@ -12,37 +12,11 @@ const MenuManagement = () => {
   const [category, setCategory] = useState('Hot Beverages');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
+  const [station, setStation] = useState('Kitchen');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { token } = useContext(AuthContext);
 
-  const handleDeleteItem = async (itemId, itemName) => {
-  const confirmed = window.confirm(
-    `⚠️ WARNING: Are you sure you want to permanently delete "${itemName}"?\n\nThis action cannot be undone.`
-  );
-
-  if (!confirmed) return;
-
-  try {
-    const response = await fetch(`http://localhost:5000/api/v1/menu/${itemId}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${token || localStorage.getItem('token')}`,
-      },
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) throw new Error(data.message);
-
-    setSuccess(`"${itemName}" deleted permanently.`);
-    fetchMenuItems();
-  } catch (err) {
-    alert(`❌ Action Blocked:\n${err.message}`);
-  }
-};
-
-  // Fetch menu items from API
   const fetchMenuItems = async () => {
     try {
       const response = await fetch('http://localhost:5000/api/v1/menu', {
@@ -64,7 +38,6 @@ const MenuManagement = () => {
     fetchMenuItems();
   }, []);
 
-  // Handle new menu item creation
   const handleCreateItem = async (e) => {
     e.preventDefault();
     setError('');
@@ -83,6 +56,7 @@ const MenuManagement = () => {
           category,
           price: parseFloat(price),
           description,
+          station,
         }),
       });
 
@@ -93,6 +67,7 @@ const MenuManagement = () => {
       setName('');
       setPrice('');
       setDescription('');
+      setStation('Kitchen');
       fetchMenuItems();
     } catch (err) {
       setError(err.message);
@@ -101,7 +76,6 @@ const MenuManagement = () => {
     }
   };
 
-  // Toggle item availability (In Stock / Out of Stock)
   const handleToggleAvailability = async (itemId, currentStatus) => {
     try {
       const response = await fetch(`http://localhost:5000/api/v1/menu/${itemId}/availability`, {
@@ -120,9 +94,31 @@ const MenuManagement = () => {
     }
   };
 
+  const handleDeleteItem = async (itemId, itemName) => {
+    const confirmed = window.confirm(`⚠️ Are you sure you want to permanently delete "${itemName}"?`);
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/v1/menu/${itemId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token || localStorage.getItem('token')}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message);
+
+      setSuccess(`"${itemName}" deleted permanently.`);
+      fetchMenuItems();
+    } catch (err) {
+      alert(`❌ Action Blocked:\n${err.message}`);
+    }
+  };
+
   return (
     <div className="space-y-8">
-      {/* Create Menu Item Form */}
+      {/* Create Form */}
       <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
         <h2 className="text-xl font-bold text-gray-800 mb-4">Add New Menu Item</h2>
 
@@ -150,7 +146,7 @@ const MenuManagement = () => {
               onChange={(e) => setCategory(e.target.value)}
               required
               className="mt-1 w-full border border-gray-300 rounded p-2 text-gray-900"
-              placeholder="e.g. Hot Beverages, Breakfast, Mains"
+              placeholder="e.g. Hot Beverages, Mains"
             />
           </div>
 
@@ -163,18 +159,30 @@ const MenuManagement = () => {
               onChange={(e) => setPrice(e.target.value)}
               required
               className="mt-1 w-full border border-gray-300 rounded p-2 text-gray-900"
-              placeholder="e.g. 150.00"
+              placeholder="150.00"
             />
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700">Preparation Station</label>
+            <select
+              value={station}
+              onChange={(e) => setStation(e.target.value)}
+              className="mt-1 w-full border border-gray-300 rounded p-2 text-gray-900 bg-white"
+            >
+              <option value="Kitchen">Kitchen</option>
+              <option value="Bar">Bar / Drinks</option>
+            </select>
+          </div>
+
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700">Description (Optional)</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="mt-1 w-full border border-gray-300 rounded p-2 text-gray-900"
-              placeholder="e.g. Served with fresh bread"
+              placeholder="e.g. Served with fresh butter"
             />
           </div>
 
@@ -190,7 +198,7 @@ const MenuManagement = () => {
         </form>
       </div>
 
-      {/* Menu Roster List */}
+      {/* Menu Table */}
       <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
         <h2 className="text-xl font-bold text-gray-800 mb-4">Active Menu Items</h2>
 
@@ -203,6 +211,7 @@ const MenuManagement = () => {
                 <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-600 uppercase">
                   <th className="py-3 px-4">Name</th>
                   <th className="py-3 px-4">Category</th>
+                  <th className="py-3 px-4">Station</th>
                   <th className="py-3 px-4">Price</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Action</th>
@@ -213,19 +222,21 @@ const MenuManagement = () => {
                   <tr key={item.item_id}>
                     <td className="py-3 px-4 font-medium">{item.name}</td>
                     <td className="py-3 px-4">{item.category}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded border">
+                        {item.station || 'Kitchen'}
+                      </span>
+                    </td>
                     <td className="py-3 px-4 font-semibold">{parseFloat(item.price).toFixed(2)} ETB</td>
                     <td className="py-3 px-4">
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded ${
-                          item.is_available
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700'
+                          item.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                         }`}
                       >
                         {item.is_available ? 'In Stock' : 'Out of Stock'}
                       </span>
                     </td>
-          
                     <td className="py-3 px-4 flex gap-2">
                       <button
                         onClick={() => handleToggleAvailability(item.item_id, item.is_available)}
@@ -237,7 +248,6 @@ const MenuManagement = () => {
                       >
                         {item.is_available ? 'Out of Stock' : 'In Stock'}
                       </button>
-
                       <button
                         onClick={() => handleDeleteItem(item.item_id, item.name)}
                         className="px-3 py-1 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded transition"

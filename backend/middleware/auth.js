@@ -1,17 +1,13 @@
 const jwt = require('jsonwebtoken');
 
-/**
- * Middleware to authenticate incoming requests via JSON Web Tokens (JWT)
- */
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    // Extract token format expecting: 'Bearer <token>'
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
         return res.status(401).json({ 
             success: false, 
-            message: "Access Denied: Missing Authorization Bearer Token Token." 
+            message: "Access Denied: Missing Authorization Bearer Token." 
         });
     }
 
@@ -22,32 +18,26 @@ const authenticateToken = (req, res, next) => {
                 message: "Session Invalidated: Token has expired or is corrupt." 
             });
         }
-        // Bind the decrypted token payload onto the request object
-        req.user = decodedStaff;
+        req.user = decodedStaff; // Contains staff_id, username, roles array
         next();
     });
 };
 
-/**
- * Factory middleware to enforce strict Role-Based Access Control (RBAC) filtering parameters
- * @param {Array<String>} allowedRoles - Collection of privileges authorized to interact with the route
- */
 const requireRole = (allowedRoles) => {
     return (req, res, next) => {
         if (!req.user || !req.user.roles) {
             return res.status(403).json({ 
                 success: false, 
-                message: "Unauthorized: Access privilege tracking context missing." 
+                message: "Unauthorized: Access privilege context missing." 
             });
         }
 
-        // Intersect user roles array against route parameters privileges
         const hasAccess = req.user.roles.some(role => allowedRoles.includes(role));
 
         if (!hasAccess) {
             return res.status(403).json({ 
                 success: false, 
-                message: "Forbidden Access Notice: Your account privileges cannot enter this module view." 
+                message: "Forbidden: Account privileges insufficient for this operation." 
             });
         }
 
@@ -55,7 +45,13 @@ const requireRole = (allowedRoles) => {
     };
 };
 
+// Shorthand helpers for routes
+const requireManager = requireRole(['Manager', 'Owner', 'Super Admin']);
+const requireOwner = requireRole(['Owner', 'Super Admin']);
+
 module.exports = {
     authenticateToken,
-    requireRole
+    requireRole,
+    requireManager,
+    requireOwner
 };
