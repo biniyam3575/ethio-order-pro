@@ -1,340 +1,89 @@
 import React from 'react';
 
-const ReceiptPreview = ({
-  order,
-  onBack,
-}) => {
-  if (!order) {
-    return (
-      <div className="p-8 text-center text-gray-400">
-        No receipt available.
-      </div>
-    );
-  }
-
-  const toNumber = (value) => {
-    const number = parseFloat(value);
-    return Number.isFinite(number)
-      ? number
-      : 0;
-  };
-
-  const subtotal =
-    toNumber(order.subtotal);
-
-  const serviceCharge =
-    toNumber(order.service_charge);
-
-  const vatAmount =
-    toNumber(order.vat_amount);
-
-  const discount =
-    toNumber(order.discount_amount);
-
-  const originalTotal =
-    toNumber(order.total_amount);
-
-  /*
-   * If discount exists, the displayed final
-   * total should reflect it.
-   *
-   * For a normal Awaiting_Bill order with
-   * no new discount:
-   * finalTotal = originalTotal.
-   */
-  const finalTotal = Math.max(
-    0,
-    originalTotal
-  );
-
-  /*
-  |--------------------------------------------------------------------------
-  | PRINT
-  |--------------------------------------------------------------------------
-  */
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  /*
-  |--------------------------------------------------------------------------
-  | ITEMS
-  |--------------------------------------------------------------------------
-  */
-
-  const items = Array.isArray(
-    order.items
-  )
-    ? order.items
-    : [];
-
-  /*
-  |--------------------------------------------------------------------------
-  | UI
-  |--------------------------------------------------------------------------
-  */
+const ReceiptPreview = ({ data, onClose }) => {
+  const {
+    tableNumber,
+    waiterName,
+    paymentMethod,
+    paymentRef,
+    fiscalReceiptNo,
+    subtotal,
+    serviceCharge,
+    vatAmount,
+    discount,
+    finalPayable,
+    cashGiven,
+    changeGiven,
+  } = data;
 
   return (
-    <div className="p-4 sm:p-6">
-      {/* ================================================================
-          TOP ACTIONS
-      ================================================================= */}
-
-      <div className="flex justify-between items-center mb-5 print:hidden">
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-sm text-blue-600 hover:text-blue-800 font-bold"
-        >
-          ← Back to Checkout
-        </button>
-
-        <button
-          type="button"
-          onClick={handlePrint}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition"
-        >
-          🖨️ Print Receipt
+    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+      <div className="flex justify-between items-center border-b pb-3">
+        <h3 className="font-bold text-emerald-700 text-sm">✅ Payment & Fiscal Log Saved</h3>
+        <button onClick={onClose} className="text-xs font-bold text-gray-500 hover:text-gray-800">
+          ✕ Close
         </button>
       </div>
 
-      {/* ================================================================
-          RECEIPT
-      ================================================================= */}
+      {/* Screen Fiscal Summary Card */}
+      <div className="p-4 bg-gray-50 border border-gray-200 font-mono text-xs rounded space-y-2 max-w-sm mx-auto">
+        <div className="text-center">
+          <p className="font-black text-sm text-gray-900">ETHIO-ORDER POS</p>
+          <p className="text-[10px] text-gray-500">Government Tax Audit Record Entry</p>
+          <p className="text-[10px] text-gray-500">Table #{tableNumber} | Waiter: {waiterName || 'N/A'}</p>
+        </div>
 
-      <div className="receipt-container max-w-sm mx-auto bg-white">
-        <div className="border border-gray-300 rounded-lg p-5 font-mono text-xs shadow-sm print:border-0 print:shadow-none print:p-0">
-          {/* BUSINESS */}
-          <div className="text-center pb-4 border-b border-dashed border-gray-400">
-            <h1 className="font-extrabold text-base">
-              ETHIO-ORDER PRO
-            </h1>
+        <div className="border-t border-dashed border-gray-300 my-2"></div>
 
-            <p className="text-gray-500 mt-1">
-              Restaurant Receipt
-            </p>
-
-            <p className="text-gray-400 mt-1">
-              Thank you for your visit
-            </p>
+        <div className="space-y-1 text-[11px]">
+          <div className="flex justify-between">
+            <span>Fiscal Machine #:</span>
+            <span className="font-bold text-gray-900">{fiscalReceiptNo}</span>
           </div>
-
-          {/* ORDER INFO */}
-          <div className="py-3 border-b border-dashed border-gray-400 space-y-1">
-            <div className="flex justify-between">
-              <span>Order #:</span>
-              <span className="font-bold">
-                {order.order_id}
-              </span>
-            </div>
-
-            <div className="flex justify-between">
-              <span>Table:</span>
-              <span className="font-bold">
-                {order.table_number}
-              </span>
-            </div>
-
-            <div className="flex justify-between">
-              <span>Waiter:</span>
-              <span className="font-bold">
-                {order.waiter_name ||
-                  '—'}
-              </span>
-            </div>
-
-            {order.payment_method && (
-              <div className="flex justify-between">
-                <span>Payment:</span>
-                <span className="font-bold">
-                  {order.payment_method.replace(
-                    '_',
-                    ' '
-                  )}
-                </span>
-              </div>
-            )}
-
-            {order.payment_ref && (
-              <div className="flex justify-between gap-3">
-                <span>Reference:</span>
-                <span className="font-bold text-right break-all">
-                  {order.payment_ref}
-                </span>
-              </div>
-            )}
-
-            {order.paid_at && (
-              <div className="flex justify-between">
-                <span>Paid:</span>
-                <span className="font-bold">
-                  {new Date(
-                    order.paid_at
-                  ).toLocaleString()}
-                </span>
-              </div>
-            )}
+          <div className="flex justify-between">
+            <span>Subtotal:</span>
+            <span>{subtotal.toFixed(2)} ETB</span>
           </div>
-
-          {/* ITEMS */}
-          <div className="py-3 border-b border-dashed border-gray-400">
-            <div className="flex justify-between font-bold mb-2">
-              <span>ITEM</span>
-              <span>AMOUNT</span>
-            </div>
-
-            {items.length === 0 ? (
-              <p className="text-gray-400 italic">
-                No items
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {items.map(
-                  (item, index) => {
-                    const quantity =
-                      toNumber(
-                        item.quantity
-                      );
-
-                    const unitPrice =
-                      toNumber(
-                        item.unit_price
-                      );
-
-                    const lineTotal =
-                      quantity *
-                      unitPrice;
-
-                    return (
-                      <div
-                        key={
-                          item.id ||
-                          index
-                        }
-                      >
-                        <div className="flex justify-between gap-3">
-                          <span className="flex-1">
-                            {quantity}x{' '}
-                            {item.name ||
-                              'Item'}
-                          </span>
-
-                          <span className="whitespace-nowrap">
-                            {lineTotal.toFixed(
-                              2
-                            )}
-                          </span>
-                        </div>
-
-                        {item.note && (
-                          <p className="text-[10px] text-gray-500 italic pl-2">
-                            Note: {item.note}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  }
-                )}
-              </div>
-            )}
+          <div className="flex justify-between">
+            <span>Service Charge (10%):</span>
+            <span>{serviceCharge.toFixed(2)} ETB</span>
           </div>
-
-          {/* TOTALS */}
-          <div className="py-3 space-y-1">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span>
-                ETB{' '}
-                {subtotal.toFixed(2)}
-              </span>
-            </div>
-
-            <div className="flex justify-between">
-              <span>Service:</span>
-              <span>
-                ETB{' '}
-                {serviceCharge.toFixed(
-                  2
-                )}
-              </span>
-            </div>
-
-            <div className="flex justify-between">
-              <span>VAT:</span>
-              <span>
-                ETB{' '}
-                {vatAmount.toFixed(2)}
-              </span>
-            </div>
-
-            {discount > 0 && (
-              <div className="flex justify-between">
-                <span>Discount:</span>
-                <span>
-                  - ETB{' '}
-                  {discount.toFixed(
-                    2
-                  )}
-                </span>
-              </div>
-            )}
-
-            <div className="border-t border-gray-400 pt-2 mt-2 flex justify-between font-extrabold text-sm">
-              <span>TOTAL:</span>
-
-              <span>
-                ETB{' '}
-                {finalTotal.toFixed(2)}
-              </span>
-            </div>
+          <div className="flex justify-between text-blue-900 font-bold">
+            <span>VAT (15%):</span>
+            <span>{vatAmount.toFixed(2)} ETB</span>
           </div>
-
-          {/* FOOTER */}
-          <div className="text-center pt-3 border-t border-dashed border-gray-400">
-            <p className="font-bold">
-              Thank you!
-            </p>
-
-            <p className="text-gray-500 mt-1">
-              Please keep this receipt.
-            </p>
+          {discount > 0 && (
+            <div className="flex justify-between text-emerald-700">
+              <span>Discount:</span>
+              <span>-{discount.toFixed(2)} ETB</span>
+            </div>
+          )}
+          <div className="flex justify-between font-black text-xs pt-1 border-t">
+            <span>TOTAL COLLECTED:</span>
+            <span>{finalPayable.toFixed(2)} ETB</span>
           </div>
+        </div>
+
+        <div className="border-t border-dashed border-gray-300 my-2"></div>
+
+        <div className="text-[10px] space-y-0.5 text-gray-600">
+          <div>Payment Method: <span className="font-bold text-gray-800">{paymentMethod}</span></div>
+          {paymentRef && <div>Txn Ref: {paymentRef}</div>}
+          {paymentMethod === 'Cash' && (
+            <>
+              <div>Cash Received: {cashGiven.toFixed(2)} ETB</div>
+              <div>Change Issued: {parseFloat(changeGiven).toFixed(2)} ETB</div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* PRINT CSS */}
-      <style>
-        {`
-          @media print {
-            body {
-              background: white !important;
-            }
-
-            body * {
-              visibility: hidden;
-            }
-
-            .receipt-container,
-            .receipt-container * {
-              visibility: visible;
-            }
-
-            .receipt-container {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 100%;
-              max-width: 380px;
-              margin: 0;
-            }
-
-            @page {
-              margin: 10mm;
-            }
-          }
-        `}
-      </style>
+      <button
+        onClick={onClose}
+        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition"
+      >
+        Return to Billing Queue
+      </button>
     </div>
   );
 };

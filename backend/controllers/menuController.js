@@ -1,14 +1,25 @@
 const { pool } = require('../config/db');
 
-// GET /api/v1/menu - Fetch all menu items
+// GET /api/v1/menu - Fetch all menu items (Optionally filter by ?station=)
 const getAllMenuItems = async (req, res) => {
+  const { station } = req.query;
+
   try {
-    const query = `
+    let query = `
       SELECT item_id, name, category, price, description, is_available, station, display_order, created_at
       FROM menu_items
-      ORDER BY category ASC, display_order ASC, name ASC
     `;
-    const { rows } = await pool.query(query);
+    const queryParams = [];
+
+    // Optional filtering by station (e.g., Kitchen, Bar, Hot Drinks)
+    if (station) {
+      query += ` WHERE station = $1`;
+      queryParams.push(station);
+    }
+
+    query += ` ORDER BY category ASC, display_order ASC, name ASC`;
+
+    const { rows } = await pool.query(query, queryParams);
     return res.status(200).json(rows);
   } catch (error) {
     console.error('Get Menu Error:', error);
@@ -16,7 +27,7 @@ const getAllMenuItems = async (req, res) => {
   }
 };
 
-// POST /api/v1/menu - Create new item
+// POST /api/v1/menu - Create new item (Managers / Owners)
 const createMenuItem = async (req, res) => {
   const { name, category, price, description, station } = req.body;
 
@@ -48,7 +59,7 @@ const createMenuItem = async (req, res) => {
   }
 };
 
-// PUT /api/v1/menu/:id - Full edit on menu item
+// PUT /api/v1/menu/:id - Full edit on menu item (Managers / Owners)
 const updateMenuItem = async (req, res) => {
   const { id } = req.params;
   const { name, category, price, description, station } = req.body;
@@ -78,10 +89,18 @@ const updateMenuItem = async (req, res) => {
   }
 };
 
-// PUT /api/v1/menu/:id/availability - Toggle availability
+// PUT /api/v1/menu/:id/availability - Toggle availability (Station Workers & Managers)
 const toggleItemAvailability = async (req, res) => {
   const { id } = req.params;
-  const { is_available } = req.body;
+  
+  // Accept both is_available (snake_case) or isAvailable (camelCase) from req.body
+  const targetAvailability = req.body.is_available !== undefined 
+    ? req.body.is_available 
+    : req.body.isAvailable;
+
+  if (targetAvailability === undefined) {
+    return res.status(400).json({ message: 'Availability status value (is_available) is required.' });
+  }
 
   try {
     const query = `
@@ -90,14 +109,14 @@ const toggleItemAvailability = async (req, res) => {
       WHERE item_id = $2
       RETURNING item_id, name, is_available
     `;
-    const { rows } = await pool.query(query, [is_available, id]);
+    const { rows } = await pool.query(query, [targetAvailability, id]);
 
     if (rows.length === 0) {
       return res.status(404).json({ message: 'Menu item not found.' });
     }
 
     return res.status(200).json({
-      message: `Item availability updated to ${is_available ? 'Available' : 'Out of Stock'}.`,
+      message: `Item availability updated to ${targetAvailability ? 'Available' : 'Out of Stock'}.`,
       item: rows[0],
     });
   } catch (error) {
@@ -106,7 +125,7 @@ const toggleItemAvailability = async (req, res) => {
   }
 };
 
-// DELETE /api/v1/menu/:id
+// DELETE /api/v1/menu/:id (Managers / Owners)
 const deleteMenuItem = async (req, res) => {
   const { id } = req.params;
 

@@ -1,428 +1,144 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import PaymentCheckout from './PaymentCheckout';
 import ReceiptPreview from './ReceiptPreview';
 
 const AwaitingBilling = () => {
   const { token } = useContext(AuthContext);
-
-  const [orders, setOrders] = useState([]);
-  const [selectedOrder, setSelectedOrder] = useState(null);
-
-  const [showReceipt, setShowReceipt] = useState(false);
-
+  const [billingQueue, setBillingQueue] = useState([]);
+  const [selectedTable, setSelectedTable] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [completedPayment, setCompletedPayment] = useState(null);
 
-  /*
-  |--------------------------------------------------------------------------
-  | FETCH AWAITING BILL ORDERS
-  |--------------------------------------------------------------------------
-  */
+  const fetchAwaitingBills = async () => {
+    try {
+      setError('');
+      const response = await fetch('http://localhost:5000/api/v1/bills/awaiting-bill', {
+        headers: {
+          Authorization: `Bearer ${token || localStorage.getItem('token')}`,
+        },
+      });
 
-  const fetchOrders = useCallback(
-    async (showLoading = false) => {
-      const activeToken =
-        token || localStorage.getItem('token');
+      if (!response.ok) throw new Error('Failed to load awaiting bills queue.');
 
-      if (!activeToken) {
-        setLoading(false);
-        setError('Your session has expired. Please login again.');
-        return;
-      }
-
-      try {
-        if (showLoading) {
-          setLoading(true);
-        } else {
-          setRefreshing(true);
-        }
-
-        setError('');
-
-        const res = await fetch(
-          'http://localhost:5000/api/v1/orders/awaiting-bill',
-          {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${activeToken}`,
-              Accept: 'application/json',
-            },
-          }
-        );
-
-        if (res.status === 401) {
-          setError(
-            'Your session has expired. Please login again.'
-          );
-          return;
-        }
-
-        if (res.status === 403) {
-          setError(
-            'You do not have permission to access the cashier billing queue.'
-          );
-          return;
-        }
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(
-            data.message ||
-              'Failed to load awaiting bill orders.'
-          );
-        }
-
-        const newOrders = Array.isArray(data) ? data : [];
-
-        setOrders(newOrders);
-
-        /*
-         * Keep the selected order synchronized with
-         * the refreshed server data.
-         */
-        setSelectedOrder((currentSelected) => {
-          if (!currentSelected) {
-            return null;
-          }
-
-          const updatedSelected = newOrders.find(
-            (order) =>
-              Number(order.order_id) ===
-              Number(currentSelected.order_id)
-          );
-
-          /*
-           * If the order was paid by another cashier,
-           * it will disappear from Awaiting_Bill.
-           */
-          return updatedSelected || null;
-        });
-      } catch (err) {
-        console.error(
-          'Error fetching awaiting bill orders:',
-          err
-        );
-
-        setError(
-          err.message ||
-            'Unable to load billing queue.'
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [token]
-  );
-
-  /*
-  |--------------------------------------------------------------------------
-  | INITIAL LOAD + AUTO REFRESH
-  |--------------------------------------------------------------------------
-  */
+      const data = await response.json();
+      setBillingQueue(Array.isArray(data) ? data : data.data || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetchOrders(true);
-
-    const interval = setInterval(() => {
-      fetchOrders(false);
-    }, 3000);
-
+    fetchAwaitingBills();
+    const interval = setInterval(fetchAwaitingBills, 8000);
     return () => clearInterval(interval);
-  }, [fetchOrders]);
+  }, [token]);
 
-  /*
-  |--------------------------------------------------------------------------
-  | SELECT ORDER
-  |--------------------------------------------------------------------------
-  */
-
-  const handleSelectOrder = (order) => {
-    setSelectedOrder(order);
-    setShowReceipt(false);
-    setError('');
+  const handleSelectTable = (table) => {
+    setSelectedTable(table);
+    setCompletedPayment(null);
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | PAYMENT SUCCESS
-  |--------------------------------------------------------------------------
-  */
-
-  const handlePaymentSuccess = async () => {
-    setSelectedOrder(null);
-    setShowReceipt(false);
-
-    await fetchOrders(false);
+  const handlePaymentSuccess = (paymentSummary) => {
+    setCompletedPayment(paymentSummary);
+    setSelectedTable(null);
+    fetchAwaitingBills();
   };
-
-  /*
-  |--------------------------------------------------------------------------
-  | MANUAL REFRESH
-  |--------------------------------------------------------------------------
-  */
-
-  const handleRefresh = () => {
-    fetchOrders(false);
-  };
-
-  /*
-  |--------------------------------------------------------------------------
-  | LOADING
-  |--------------------------------------------------------------------------
-  */
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6">
-        <div className="bg-white border rounded-xl shadow-sm p-10 text-center">
-          <div className="text-3xl mb-3">💳</div>
-
-          <p className="font-bold text-gray-700">
-            Loading billing queue...
-          </p>
-
-          <p className="text-xs text-gray-400 mt-1">
-            Please wait while we load orders awaiting payment.
-          </p>
-        </div>
+      <div className="flex justify-center items-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+        <span className="ml-3 text-sm font-semibold text-gray-600">Loading Billing Queue...</span>
       </div>
     );
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | MAIN UI
-  |--------------------------------------------------------------------------
-  */
-
   return (
-    <div className="p-4 sm:p-6 bg-gray-50 min-h-full">
-      {/* PAGE HEADER */}
-      <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="space-y-6 p-4">
+      {/* Top Header Bar */}
+      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200">
         <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-gray-800">
-            Cashier Billing
-          </h1>
-
-          <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Process customer bill requests and complete payments.
-          </p>
+          <h2 className="text-xl font-bold text-gray-900">Cashier Settlement Queue ({billingQueue.length})</h2>
+          <p className="text-xs text-gray-500">Record payments and fiscal machine receipt numbers for tax audits</p>
         </div>
-
         <button
-          type="button"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className={`px-4 py-2 rounded-lg text-sm font-bold border transition ${
-            refreshing
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-white text-gray-700 hover:bg-gray-100 border-gray-300'
-          }`}
+          onClick={fetchAwaitingBills}
+          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition"
         >
-          {refreshing ? 'Refreshing...' : '↻ Refresh'}
+          🔄 Refresh
         </button>
       </div>
 
-      {/* ERROR */}
       {error && (
-        <div className="mb-5 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">
-          <div className="flex items-start gap-2">
-            <span>⚠️</span>
-
-            <div className="flex-1">
-              <p className="font-bold">
-                Billing queue error
-              </p>
-
-              <p className="text-xs mt-1">
-                {error}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => fetchOrders(true)}
-              className="text-xs font-bold underline"
-            >
-              Retry
-            </button>
-          </div>
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs font-medium">
+          {error}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* ================================================================
-            BILLING QUEUE
-        ================================================================= */}
-
-        <div className="lg:col-span-4">
-          <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-            {/* QUEUE HEADER */}
-            <div className="p-4 border-b bg-gray-50">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="font-extrabold text-gray-800">
-                    Awaiting Checkout
-                  </h2>
-
-                  <p className="text-xs text-gray-500 mt-1">
-                    Orders waiting for payment
-                  </p>
-                </div>
-
-                <span className="inline-flex items-center justify-center min-w-8 h-8 px-2 rounded-full bg-blue-100 text-blue-700 text-sm font-extrabold">
-                  {orders.length}
-                </span>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Table Queue List */}
+        <div className="lg:col-span-5 space-y-3">
+          {billingQueue.length === 0 ? (
+            <div className="bg-white p-8 text-center rounded-xl border border-gray-200 text-gray-400 text-xs">
+              📋 No tables currently awaiting bill.
             </div>
-
-            {/* QUEUE */}
-            <div className="p-3 space-y-3 max-h-[calc(100vh-250px)] overflow-y-auto">
-              {orders.length === 0 ? (
-                <div className="py-12 px-4 text-center">
-                  <div className="text-4xl mb-3">
-                    ✓
+          ) : (
+            billingQueue.map((table) => {
+              const isSelected = selectedTable?.table_id === table.table_id;
+              return (
+                <div
+                  key={table.table_id}
+                  onClick={() => handleSelectTable(table)}
+                  className={`p-4 rounded-xl border cursor-pointer transition ${
+                    isSelected
+                      ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-200'
+                      : 'bg-white border-gray-200 hover:border-emerald-300'
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="font-black text-gray-900 text-base">Table #{table.table_number}</h3>
+                      <p className="text-xs text-gray-500">Waiter: {table.waiter_name || 'Unassigned'}</p>
+                    </div>
+                    <span className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                      {table.total_orders_count || 1} Ticket(s)
+                    </span>
                   </div>
 
-                  <p className="font-bold text-gray-600">
-                    No pending bills
-                  </p>
-
-                  <p className="text-xs text-gray-400 mt-1">
-                    The billing queue is clear.
-                  </p>
+                  <div className="flex justify-between items-center text-xs pt-2 border-t border-gray-100 font-bold text-gray-800">
+                    <span>Total Due:</span>
+                    <span className="text-emerald-700 text-sm">
+                      {parseFloat(table.group_total_amount || 0).toFixed(2)} ETB
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                orders.map((ord) => {
-                  const isSelected =
-                    selectedOrder?.order_id ===
-                    ord.order_id;
-
-                  const total =
-                    parseFloat(
-                      ord.total_amount
-                    ) || 0;
-
-                  return (
-                    <button
-                      key={ord.order_id}
-                      type="button"
-                      onClick={() =>
-                        handleSelectOrder(ord)
-                      }
-                      className={`w-full text-left p-4 border rounded-xl transition ${
-                        isSelected
-                          ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-100'
-                          : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start gap-3">
-                        <div>
-                          <p className="font-extrabold text-gray-800">
-                            Table {ord.table_number}
-                          </p>
-
-                          <p className="text-xs text-gray-500 mt-1">
-                            Order #{ord.order_id}
-                          </p>
-                        </div>
-
-                        <span className="text-sm font-extrabold text-blue-600 whitespace-nowrap">
-                          ETB {total.toFixed(2)}
-                        </span>
-                      </div>
-
-                      <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
-                        <span className="text-xs text-gray-500">
-                          Waiter
-                        </span>
-
-                        <span className="text-xs font-bold text-gray-700">
-                          {ord.waiter_name || 'Unknown'}
-                        </span>
-                      </div>
-
-                      <div className="mt-2 flex justify-between items-center">
-                        <span className="text-xs text-gray-500">
-                          Items
-                        </span>
-
-                        <span className="text-xs font-bold text-gray-700">
-                          {Array.isArray(ord.items)
-                            ? ord.items.reduce(
-                                (sum, item) =>
-                                  sum +
-                                  (parseFloat(
-                                    item.quantity
-                                  ) || 0),
-                                0
-                              )
-                            : 0}
-                        </span>
-                      </div>
-
-                      <div className="mt-3">
-                        <span className="inline-flex px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-[10px] font-extrabold uppercase">
-                          Awaiting Bill
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
+              );
+            })
+          )}
         </div>
 
-        {/* ================================================================
-            WORKSPACE
-        ================================================================= */}
-
-        <div className="lg:col-span-8">
-          <div className="bg-white border rounded-xl shadow-sm min-h-[500px]">
-            {selectedOrder ? (
-              showReceipt ? (
-                <ReceiptPreview
-                  order={selectedOrder}
-                  onBack={() =>
-                    setShowReceipt(false)
-                  }
-                />
-              ) : (
-                <PaymentCheckout
-                  order={selectedOrder}
-                  onSuccess={
-                    handlePaymentSuccess
-                  }
-                  onPrintPreview={() =>
-                    setShowReceipt(true)
-                  }
-                />
-              )
-            ) : (
-              <div className="min-h-[500px] flex items-center justify-center p-8">
-                <div className="text-center max-w-sm">
-                  <div className="text-5xl mb-4">
-                    💳
-                  </div>
-
-                  <h2 className="font-extrabold text-gray-700 text-lg">
-                    Select an order
-                  </h2>
-
-                  <p className="text-sm text-gray-400 mt-2">
-                    Select a bill request from the
-                    queue to view the order and
-                    process payment.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+        {/* Right Panel: Checkout or Fiscal Summary */}
+        <div className="lg:col-span-7">
+          {completedPayment ? (
+            <ReceiptPreview
+              data={completedPayment}
+              onClose={() => setCompletedPayment(null)}
+            />
+          ) : selectedTable ? (
+            <PaymentCheckout
+              table={selectedTable}
+              token={token}
+              onPaymentSuccess={handlePaymentSuccess}
+            />
+          ) : (
+            <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-12 text-center text-gray-400 text-xs">
+              👈 Select a table from the billing queue to open settlement checkout.
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -35,21 +35,25 @@ const Login = () => {
       loginUser(data);
 
       // 2. Redirect automatically based on primary role
-    const primaryRole = data.user.roles[0];
+      const primaryRole = data.user.roles[0];
 
-    if (primaryRole === 'Owner') {
-      navigate('/owner'); // or navigate('/manager');
-    } else if (primaryRole === 'Manager') {
-      navigate('/manager');
-    } else if (primaryRole === 'Waiter') {
-      navigate('/waiter');
-    } else if (primaryRole === 'Kitchen') {
-      navigate('/kitchen');
-    } else if (primaryRole === 'Cashier') {
-      navigate('/cashier');
-    } else {
-      navigate('/login');
-    }
+      if (primaryRole === 'Owner') {
+        navigate('/owner');
+      } else if (primaryRole === 'Manager' || primaryRole === 'General Manager') {
+        navigate('/manager');
+      } else if (primaryRole === 'Waiter') {
+        navigate('/waiter');
+      } else if (primaryRole === 'Kitchen') {
+        navigate('/kitchen');
+      } else if (primaryRole === 'Cashier') {
+        navigate('/cashier');
+      } else if (primaryRole === 'Bar') {
+        navigate('/bar');
+      } else if (primaryRole === 'Hot Drinks') {
+        navigate('/hot-drinks');
+      } else {
+        navigate('/login');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -117,7 +121,6 @@ const Login = () => {
             PORTFOLIO DEMO ACCOUNTS (ONE-CLICK)
           </p>
           <div className="grid grid-cols-2 gap-2 text-xs">
-            {/* Added Owner Demo Button */}
             <button
               type="button"
               onClick={() => fillDemoCredentials('owner', '123456')}
@@ -125,7 +128,6 @@ const Login = () => {
             >
               👑 Owner
             </button>
-            
             <button
               type="button"
               onClick={() => fillDemoCredentials('admin', '123456')}
@@ -146,6 +148,20 @@ const Login = () => {
               className="bg-orange-100 text-orange-700 p-2 rounded text-center hover:bg-orange-200 font-medium"
             >
               🍳 Kitchen
+            </button>
+            <button
+              type="button"
+              onClick={() => fillDemoCredentials('bar1', '123456')}
+              className="bg-amber-100 text-amber-700 p-2 rounded text-center hover:bg-amber-200 font-medium"
+            >
+              🍹 Bar
+            </button>
+            <button
+              type="button"
+              onClick={() => fillDemoCredentials('hotdrinks1', '123456')}
+              className="bg-yellow-100 text-yellow-800 p-2 rounded text-center hover:bg-yellow-200 font-medium"
+            >
+              ☕ Hot Drinks
             </button>
             <button
               type="button"

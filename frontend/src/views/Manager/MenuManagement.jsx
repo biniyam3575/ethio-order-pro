@@ -172,6 +172,7 @@ const MenuManagement = () => {
             >
               <option value="Kitchen">Kitchen</option>
               <option value="Bar">Bar / Drinks</option>
+              <option value="Hot Drinks">Hot Drinks</option>
             </select>
           </div>
 

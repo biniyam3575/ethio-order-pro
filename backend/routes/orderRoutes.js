@@ -1,12 +1,7 @@
-
 const express = require('express');
-
 const router = express.Router();
 
-const {
-  authenticateToken,
-  requireRole,
-} = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 
 const {
   createOrder,
@@ -26,63 +21,22 @@ const {
   markNotificationAsRead,
 } = require('../controllers/notificationController');
 
-
 /*
 |--------------------------------------------------------------------------
-| CREATE ORDER
+| ORDER MANAGEMENT ROUTES
 |--------------------------------------------------------------------------
 */
 
-router.post(
-  '/',
-  authenticateToken,
-  createOrder
-);
+// Create a new order
+router.post('/', authenticateToken, createOrder);
 
+// Fetch orders by production station (Kitchen, Bar, Hot Drinks)
+router.get('/kitchen', authenticateToken, getKitchenOrders);
 
-/*
-|--------------------------------------------------------------------------
-| KITCHEN ORDERS
-|--------------------------------------------------------------------------
-*/
+// Fetch live orders for assigned waiter
+router.get('/live', authenticateToken, getLiveOrders);
 
-router.get(
-  '/kitchen',
-  authenticateToken,
-  getKitchenOrders
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| LIVE ORDERS
-|--------------------------------------------------------------------------
-*/
-
-router.get(
-  '/live',
-  authenticateToken,
-  getLiveOrders
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| REQUEST BILL
-|--------------------------------------------------------------------------
-|
-| Flow:
-|
-| Served
-|   ↓
-| Awaiting_Bill
-|   ↓
-| Cashier
-|
-| Only the waiter can request the bill.
-|
-*/
-
+// Request bill for a served order (Waiter only)
 router.post(
   '/:orderId/request-bill',
   authenticateToken,
@@ -90,79 +44,27 @@ router.post(
   requestBill
 );
 
-
-/*
-|--------------------------------------------------------------------------
-| CASHIER - AWAITING BILL
-|--------------------------------------------------------------------------
-|
-| GET /api/v1/orders/awaiting-bill
-|
-| Cashiers and Managers can see orders waiting for payment.
-|
-*/
-
+// Cashier view for pending bills
 router.get(
   '/awaiting-bill',
   authenticateToken,
-  requireRole(['Cashier', 'Manager']),
+  requireRole(['Cashier', 'General Manager', 'Owner']),
   getAwaitingBillOrders
 );
 
-
-/*
-|--------------------------------------------------------------------------
-| CASHIER - PROCESS PAYMENT
-|--------------------------------------------------------------------------
-|
-| POST /api/v1/orders/:orderId/pay
-|
-| Cashier or Manager finalizes payment.
-|
-*/
-
+// Cashier payment execution
 router.post(
   '/:orderId/pay',
   authenticateToken,
-  requireRole(['Cashier', 'Manager']),
+  requireRole(['Cashier', 'General Manager', 'Owner']),
   processPayment
 );
 
+// Notification endpoints
+router.get('/notifications', authenticateToken, getUnreadNotifications);
+router.put('/notifications/:notificationId/read', authenticateToken, markNotificationAsRead);
 
-/*
-|--------------------------------------------------------------------------
-| NOTIFICATIONS
-|--------------------------------------------------------------------------
-*/
-
-router.get(
-  '/notifications',
-  authenticateToken,
-  getUnreadNotifications
-);
-
-router.put(
-  '/notifications/:notificationId/read',
-  authenticateToken,
-  markNotificationAsRead
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| UPDATE ORDER STATUS
-|--------------------------------------------------------------------------
-|
-| Used by Kitchen / other authorized order operations.
-|
-*/
-
-router.put(
-  '/:orderId/status',
-  authenticateToken,
-  updateOrderStatus
-);
-
+// Station item status update endpoint (e.g. marking item Ready)
+router.put('/item/:orderItemId/status', authenticateToken, updateOrderStatus);
 
 module.exports = router;
-

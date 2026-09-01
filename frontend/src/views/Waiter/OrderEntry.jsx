@@ -1,230 +1,279 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const OrderEntry = ({ language, selectedTable, onOrderSent }) => {
-  const { user, token } = useContext(AuthContext);
-  const [menuItems, setMenuItems] = useState([]);
-  const [cart, setCart] = useState([]);
-  const [loading, setLoading] = useState(false);
+const OrderEntry = ({ selectedTable, onOrderSubmitted, onCancel }) => {
+  const { token, user } = useContext(AuthContext);
 
-  // Load available menu items
+  const [menuItems, setMenuItems] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [cart, setCart] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  // Fetch Menu Items
   useEffect(() => {
-    fetch('http://localhost:5000/api/v1/menu', {
-      headers: { Authorization: `Bearer ${token || localStorage.getItem('token')}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setMenuItems(Array.isArray(data) ? data : []))
-      .catch((err) => console.error('Menu load error:', err));
+    const fetchMenu = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/v1/menu', {
+          headers: {
+            Authorization: `Bearer ${token || localStorage.getItem('token')}`,
+          },
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Failed to fetch menu.');
+        
+        const items = Array.isArray(data) ? data : data.items || [];
+        setMenuItems(items);
+
+        // Extract unique categories dynamically
+        const cats = ['All', ...new Set(items.map((i) => i.category || 'General'))];
+        setCategories(cats);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMenu();
   }, [token]);
 
-  // Add item or increment quantity
+  // Cart Handlers
   const addToCart = (item) => {
-    setCart((prev) => {
-      const exists = prev.find((i) => i.item_id === item.item_id);
-      if (exists) {
-        return prev.map((i) => (i.item_id === item.item_id ? { ...i, quantity: i.quantity + 1 } : i));
+    setCart((prevCart) => {
+      const existing = prevCart.find((ci) => ci.item_id === item.item_id);
+      if (existing) {
+        return prevCart.map((ci) =>
+          ci.item_id === item.item_id ? { ...ci, quantity: ci.quantity + 1 } : ci
+        );
       }
-      return [...prev, { ...item, quantity: 1, note: '' }];
+      return [...prevCart, { ...item, quantity: 1, note: '' }];
     });
   };
 
-  // Adjust quantity (+ / -)
   const updateQuantity = (itemId, delta) => {
-    setCart((prev) =>
-      prev
-        .map((i) => (i.item_id === itemId ? { ...i, quantity: i.quantity + delta } : i))
-        .filter((i) => i.quantity > 0)
+    setCart((prevCart) =>
+      prevCart
+        .map((ci) => {
+          if (ci.item_id === itemId) {
+            const newQty = ci.quantity + delta;
+            return newQty > 0 ? { ...ci, quantity: newQty } : null;
+          }
+          return ci;
+        })
+        .filter(Boolean)
     );
   };
 
-  // Remove individual item
-  const removeItem = (itemId) => {
-    setCart((prev) => prev.filter((i) => i.item_id !== itemId));
-  };
-
-  // Clear entire cart
-  const clearCart = () => {
-    setCart([]);
-  };
-
-  // Update kitchen notes per item
   const updateNote = (itemId, note) => {
-    setCart((prev) => prev.map((i) => (i.item_id === itemId ? { ...i, note } : i)));
+    setCart((prevCart) =>
+      prevCart.map((ci) => (ci.item_id === itemId ? { ...ci, note } : ci))
+    );
   };
 
-  // Calculate bill totals
-  const subtotal = cart.reduce((acc, i) => acc + parseFloat(i.price) * i.quantity, 0);
+  // Tax calculations matching system specifications (10% Service Charge + 15% VAT)
+  const subtotal = cart.reduce((sum, item) => sum + parseFloat(item.price) * item.quantity, 0);
+  const serviceCharge = subtotal * 0.10;
+  const taxableTotal = subtotal + serviceCharge;
+  const vatAmount = taxableTotal * 0.15;
+  const grandTotal = taxableTotal + vatAmount;
 
-  // Submit order to API
-  const handleSubmit = async () => {
-    if (!selectedTable) {
-      return alert(language === 'am' ? 'እባክዎ መጀመሪያ ጠረጴዛ ይምረጡ' : 'Select a table first!');
-    }
-    if (cart.length === 0) {
-      return alert(language === 'am' ? 'ትዕዛዙ ባዶ ነው' : 'Cart is empty!');
-    }
+  // Submit Order to Backend
+  const handleSubmitOrder = async () => {
+    if (!selectedTable) return alert('Please select a table first.');
+    if (cart.length === 0) return alert('Cart is empty.');
 
-    // Safely retrieve staff_id matching the schema key
-    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const activeStaffId = user?.staff_id || user?.id || storedUser.staff_id || storedUser.id;
-
-    if (!activeStaffId) {
-      return alert('User session invalid. Staff ID is missing from local storage.');
-    }
-
-    setLoading(true);
+    setSubmitting(true);
+    setError('');
 
     try {
-      const res = await fetch('http://localhost:5000/api/v1/orders', {
+      const payload = {
+        table_id: selectedTable.table_id,
+        waiter_id: user?.staff_id,
+        items: cart.map((ci) => ({
+          item_id: ci.item_id,
+          quantity: ci.quantity,
+          note: ci.note || '',
+        })),
+      };
+
+      const response = await fetch('http://localhost:5000/api/v1/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token || localStorage.getItem('token')}`,
         },
-        body: JSON.stringify({
-          table_id: selectedTable.table_id,
-          waiter_id: activeStaffId, // Matches staff_id constraint
-          items: cart,
-          subtotal: subtotal,
-          service_charge: subtotal * 0.1,
-          vat_amount: subtotal * 0.15,
-          total_amount: subtotal * 1.25,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to submit order.');
 
-      if (res.ok) {
-        alert(language === 'am' ? 'ትዕዛዙ ወደ ወጥ ቤት ተልኳል!' : 'Order sent to kitchen!');
-        setCart([]);
-        if (onOrderSent) onOrderSent();
-      } else {
-        alert(`Error: ${data.message || 'Failed to send order'}`);
-      }
+      setCart([]);
+      if (onOrderSubmitted) onOrderSubmitted(data);
     } catch (err) {
-      alert('Network error. Check backend server.');
+      setError(err.message);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
+  const filteredItems =
+    selectedCategory === 'All'
+      ? menuItems
+      : menuItems.filter((i) => (i.category || 'General') === selectedCategory);
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Menu Catalog Section */}
-      <div className="md:col-span-2 bg-white p-4 border rounded shadow-sm">
-        <h2 className="text-sm font-bold text-gray-700 mb-3">
-          {language === 'am' ? 'ምግብ / መጠጥ ይምረጡ' : 'Menu Catalog'}
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {menuItems.map((item) => (
+      <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-bold text-gray-900">
+            Menu Items — <span className="text-blue-600">Table #{selectedTable?.table_number}</span>
+          </h3>
+          <button
+            onClick={onCancel}
+            className="text-xs font-semibold text-gray-500 hover:text-gray-800"
+          >
+            ✕ Change Table
+          </button>
+        </div>
+
+        {/* Category Filter Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-thin">
+          {categories.map((cat) => (
             <button
-              key={item.item_id}
-              onClick={() => addToCart(item)}
-              className="p-3 border rounded text-left hover:border-blue-500 bg-gray-50 flex flex-col justify-between transition"
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+                selectedCategory === cat
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
             >
-              <div className="font-bold text-xs sm:text-sm">{item.name}</div>
-              <div className="text-xs text-blue-600 font-bold mt-2">
-                {parseFloat(item.price).toFixed(2)} ETB
-              </div>
+              {cat}
             </button>
           ))}
         </div>
+
+        {loading ? (
+          <p className="text-sm text-gray-500 py-6 text-center">Loading menu catalog...</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[500px] overflow-y-auto pr-1">
+            {filteredItems.map((item) => (
+              <button
+                key={item.item_id}
+                onClick={() => addToCart(item)}
+                className="p-3 border border-gray-200 rounded-xl text-left bg-gray-50 hover:bg-blue-50 hover:border-blue-300 transition flex flex-col justify-between group"
+              >
+                <div>
+                  <h4 className="font-bold text-sm text-gray-900 group-hover:text-blue-700">
+                    {item.name}
+                  </h4>
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block">
+                    Station: {item.station || 'Kitchen'}
+                  </span>
+                </div>
+                <div className="mt-3 flex justify-between items-center">
+                  <span className="text-sm font-black text-gray-900">
+                    {parseFloat(item.price).toFixed(2)} ETB
+                  </span>
+                  <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md">
+                    + Add
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Cart Ticket Summary */}
-      <div className="bg-white p-4 border rounded shadow-sm space-y-4">
-        <div className="flex justify-between items-center border-b pb-2">
-          <h2 className="text-sm font-bold text-gray-800">
-            {selectedTable
-              ? `Table T-${selectedTable.table_number}`
-              : language === 'am'
-              ? 'ጠረጴዛ አልተመረጠም'
-              : 'No Table Selected'}
-          </h2>
-          {cart.length > 0 && (
-            <button
-              onClick={clearCart}
-              className="text-xs text-red-600 hover:underline font-bold"
-            >
-              {language === 'am' ? 'ሁሉንም አፅዳ' : 'Clear All'}
-            </button>
-          )}
-        </div>
+      {/* Cart Summary & Checkout */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">
+            Current Order Ticket
+          </h3>
 
-        {/* Selected Items */}
-        <div className="space-y-3 max-h-60 overflow-y-auto">
+          {error && (
+            <div className="bg-red-50 text-red-700 p-2.5 rounded-lg mb-3 text-xs border border-red-200">
+              {error}
+            </div>
+          )}
+
           {cart.length === 0 ? (
-            <p className="text-xs text-gray-400 italic text-center py-4">
-              {language === 'am' ? 'ምንም አልተመረጠም' : 'Cart is empty'}
-            </p>
+            <div className="py-12 text-center text-gray-400 text-sm">
+              🛒 Click menu items to add them to this ticket.
+            </div>
           ) : (
-            cart.map((i) => (
-              <div key={i.item_id} className="border-b pb-2 text-xs space-y-1">
-                <div className="flex justify-between font-bold">
-                  <span>{i.name}</span>
-                  <div className="flex items-center space-x-2">
-                    <span>{(parseFloat(i.price) * i.quantity).toFixed(2)} ETB</span>
-                    <button
-                      onClick={() => removeItem(i.item_id)}
-                      className="text-red-500 hover:text-red-700 font-bold px-1"
-                      title="Remove Item"
-                    >
-                      ✕
-                    </button>
+            <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+              {cart.map((item) => (
+                <div
+                  key={item.item_id}
+                  className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm"
+                >
+                  <div className="flex justify-between items-start font-bold text-gray-800">
+                    <span>{item.name}</span>
+                    <span>{(parseFloat(item.price) * item.quantity).toFixed(2)} ETB</span>
                   </div>
-                </div>
 
-                <div className="flex justify-between items-center">
-                  <div className="flex space-x-1">
-                    <button
-                      onClick={() => updateQuantity(i.item_id, -1)}
-                      className="px-2 py-0.5 bg-gray-200 rounded font-bold hover:bg-gray-300"
-                    >
-                      -
-                    </button>
-                    <span className="font-bold px-1.5 py-0.5">{i.quantity}</span>
-                    <button
-                      onClick={() => updateQuantity(i.item_id, 1)}
-                      className="px-2 py-0.5 bg-gray-200 rounded font-bold hover:bg-gray-300"
-                    >
-                      +
-                    </button>
+                  <div className="flex items-center justify-between mt-2">
+                    <input
+                      type="text"
+                      placeholder="Add note (e.g. No onions)"
+                      value={item.note}
+                      onChange={(e) => updateNote(item.item_id, e.target.value)}
+                      className="text-xs border border-gray-200 rounded px-2 py-1 w-2/3 bg-white text-gray-900"
+                    />
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => updateQuantity(item.item_id, -1)}
+                        className="w-6 h-6 rounded bg-gray-200 font-bold hover:bg-gray-300"
+                      >
+                        -
+                      </button>
+                      <span className="w-5 text-center font-bold">{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.item_id, 1)}
+                        className="w-6 h-6 rounded bg-gray-200 font-bold hover:bg-gray-300"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
-                  <input
-                    type="text"
-                    placeholder="Note"
-                    value={i.note}
-                    onChange={(e) => updateNote(i.item_id, e.target.value)}
-                    className="border px-1.5 py-0.5 text-xs w-28 rounded"
-                  />
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
 
-        {/* Total Summary */}
-        <div className="border-t pt-3">
-          <div className="flex justify-between font-bold text-sm mb-3">
-            <span>Subtotal:</span>
-            <span>{subtotal.toFixed(2)} ETB</span>
+        {/* Total Calculations */}
+        <div className="mt-6 pt-4 border-t border-gray-200 space-y-1.5 text-xs text-gray-600">
+          <div className="flex justify-between">
+            <span>Subtotal</span>
+            <span className="font-semibold text-gray-900">{subtotal.toFixed(2)} ETB</span>
           </div>
+          <div className="flex justify-between">
+            <span>Service Charge (10%)</span>
+            <span className="font-semibold text-gray-900">{serviceCharge.toFixed(2)} ETB</span>
+          </div>
+          <div className="flex justify-between">
+            <span>VAT (15%)</span>
+            <span className="font-semibold text-gray-900">{vatAmount.toFixed(2)} ETB</span>
+          </div>
+          <div className="flex justify-between text-base font-black text-gray-900 pt-2 border-t">
+            <span>Grand Total</span>
+            <span className="text-blue-600">{grandTotal.toFixed(2)} ETB</span>
+          </div>
+
           <button
-            onClick={handleSubmit}
-            disabled={!selectedTable || cart.length === 0 || loading}
-            className={`w-full py-2 text-xs font-bold text-white rounded transition ${
-              selectedTable && cart.length > 0 && !loading
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-gray-300 cursor-not-allowed'
-            }`}
+            onClick={handleSubmitOrder}
+            disabled={submitting || cart.length === 0}
+            className="w-full mt-4 bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700 transition shadow-sm disabled:opacity-50"
           >
-            {loading
-              ? language === 'am'
-                ? 'እየላከ ነው...'
-                : 'Sending...'
-              : language === 'am'
-              ? 'ወደ ወጥ ቤት ላክ'
-              : 'Send to Kitchen'}
+            {submitting ? 'Submitting Ticket...' : '🚀 Send Order to Stations'}
           </button>
         </div>
       </div>

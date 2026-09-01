@@ -1,23 +1,21 @@
 import React, { useState, useEffect, useContext } from 'react';
 import TicketQueue from './TicketQueue';
-import InverntoryToggle from './InverntoryToggle';
+import InventoryToggle from './InverntoryToggle';
 import { AuthContext } from '../../context/AuthContext';
 
-const KitchenView = () => {
+const BarView = () => {
   const { token } = useContext(AuthContext);
-  const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'inventory'
+  const [activeTab, setActiveTab] = useState('queue');
   const [tickets, setTickets] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Fetch kitchen-specific tickets (?station=Kitchen) and menu items
-  const fetchKitchenData = async () => {
+  const fetchBarData = async () => {
     try {
       const headers = { Authorization: `Bearer ${token || localStorage.getItem('token')}` };
-
       const [ticketsRes, menuRes] = await Promise.all([
-        fetch('http://localhost:5000/api/v1/orders/kitchen?station=Kitchen', { headers }),
+        fetch('http://localhost:5000/api/v1/orders/kitchen?station=Bar', { headers }),
         fetch('http://localhost:5000/api/v1/menu', { headers }),
       ]);
 
@@ -36,12 +34,11 @@ const KitchenView = () => {
   };
 
   useEffect(() => {
-    fetchKitchenData();
-    const interval = setInterval(fetchKitchenData, 5000);
+    fetchBarData();
+    const interval = setInterval(fetchBarData, 5000);
     return () => clearInterval(interval);
   }, [token]);
 
-  // Update specific order item status via /api/v1/orders/item/:orderItemId/status
   const handleUpdateItemStatus = async (orderItemId, newStatus) => {
     try {
       const response = await fetch(`http://localhost:5000/api/v1/orders/item/${orderItemId}/status`, {
@@ -58,14 +55,12 @@ const KitchenView = () => {
         throw new Error(data.message || 'Failed to update item status');
       }
 
-      fetchKitchenData();
+      fetchBarData();
     } catch (err) {
-      console.error('Error updating status:', err);
       setError(err.message);
     }
   };
 
-  // Toggle inventory item availability
   const handleToggleStock = async (itemId, isAvailable) => {
     try {
       await fetch(`http://localhost:5000/api/v1/menu/${itemId}/availability`, {
@@ -76,7 +71,7 @@ const KitchenView = () => {
         },
         body: JSON.stringify({ isAvailable }),
       });
-      fetchKitchenData();
+      fetchBarData();
     } catch (err) {
       console.error('Failed to update stock:', err);
     }
@@ -85,49 +80,40 @@ const KitchenView = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12 bg-white rounded-xl shadow-sm border border-gray-200 max-w-7xl mx-auto">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-gray-600 font-medium">Loading kitchen display...</span>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+        <span className="ml-3 text-gray-600 font-medium">Loading bar terminal...</span>
       </div>
     );
   }
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      {/* Header */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-            🍳 Kitchen Station Terminal
+            🍹 Bar Station Terminal
           </h1>
-          <p className="text-xs text-gray-500 font-medium">
-            Food Line Orders • Live Preparation Queue
-          </p>
+          <p className="text-xs text-gray-500 font-medium">Cold Drinks & Beverage Queue</p>
         </div>
-
-        {/* View Switcher Tabs */}
         <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
           <button
             onClick={() => setActiveTab('queue')}
             className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition ${
-              activeTab === 'queue'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+              activeTab === 'queue' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            📋 Food Queue ({tickets.length})
+            📋 Drink Queue ({tickets.length})
           </button>
           <button
             onClick={() => setActiveTab('inventory')}
             className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition ${
-              activeTab === 'inventory'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+              activeTab === 'inventory' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             📦 86 Inventory
           </button>
           <button
-            onClick={fetchKitchenData}
+            onClick={fetchBarData}
             className="px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg ml-2 transition"
           >
             🔄 Refresh
@@ -135,23 +121,18 @@ const KitchenView = () => {
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-700 p-3 rounded-lg text-xs border border-red-200">
-          {error}
-        </div>
-      )}
+      {error && <div className="bg-red-50 text-red-700 p-3 rounded-lg text-xs border border-red-200">{error}</div>}
 
-      {/* Main Content */}
       {activeTab === 'queue' ? (
         <TicketQueue tickets={tickets} onUpdateItemStatus={handleUpdateItemStatus} />
-      ) : (
-        <InverntoryToggle 
-          menuItems={menuItems.filter(item => item.station === 'Kitchen')} 
-          onToggleStock={handleToggleStock} 
+        ) : (
+        <InventoryToggle 
+            menuItems={menuItems.filter(item => item.station === 'Bar')} 
+            onToggleStock={handleToggleStock} 
         />
-      )}
+        )}
     </div>
   );
 };
 
-export default KitchenView;
+export default BarView;

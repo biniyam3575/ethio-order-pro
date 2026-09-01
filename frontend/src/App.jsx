@@ -8,6 +8,8 @@ import DashboardOverview from './views/Manager/DashboardOverview';
 import WaiterWorkspace from './views/Waiter/WaiterWorkspace';
 import KitchenView from './views/Kitchen/KitchenView';
 import AwaitingBilling from './views/Cashier/AwaitingBilling';
+import BarView from './views/Kitchen/BarView';
+import HotDrinksView from './views/Kitchen/HotDrinksView';
 
 function App() {
   return (
@@ -16,11 +18,11 @@ function App() {
       <Route path="/login" element={<Login />} />
 
       {/* Owner & Manager Shared Protected Routes */}
-      <Route element={<ProtectedRoute allowedRoles={['Owner', 'Manager']} />}>
+      <Route element={<ProtectedRoute allowedRoles={['Owner', 'Manager', 'General Manager']} />}>
         <Route path="/manager" element={<DashboardOverview />} />
       </Route>
 
-      {/* Dedicated Owner-Only Routes (Add future administrative components here) */}
+      {/* Dedicated Owner-Only Routes */}
       <Route element={<ProtectedRoute allowedRoles={['Owner']} />}>
         <Route path="/owner" element={<DashboardOverview />} />
       </Route>
@@ -38,6 +40,16 @@ function App() {
       {/* Cashier Protected Routes */}
       <Route element={<ProtectedRoute allowedRoles={['Cashier']} />}>
         <Route path="/cashier" element={<AwaitingBilling />} />
+      </Route>
+
+      {/* Bar Protected Routes */}
+      <Route element={<ProtectedRoute allowedRoles={['Bar', 'Manager', 'General Manager', 'Owner']} />}>
+        <Route path="/bar" element={<BarView />} />
+      </Route>
+
+      {/* Hot Drinks Protected Routes */}
+      <Route element={<ProtectedRoute allowedRoles={['Hot Drinks', 'Kitchen', 'Bar', 'Manager', 'General Manager', 'Owner']} />}>
+        <Route path="/hot-drinks" element={<HotDrinksView />} />
       </Route>
 
       {/* Default Fallback Redirect */}

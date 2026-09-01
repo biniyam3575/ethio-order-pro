@@ -172,9 +172,9 @@ const markNotificationAsRead = async (req, res) => {
     */
 
     if (
-      notification.recipient_role === 'Waiter' &&
-      notification.order_id
-    ) {
+        (notification.recipient_role === 'Waiter' || notification.recipient_role === 'All') &&
+        notification.order_id
+      ) {
       const orderRes = await client.query(
         `
         SELECT
