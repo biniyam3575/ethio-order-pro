@@ -4,14 +4,18 @@ const TicketQueue = ({ tickets, onUpdateItemStatus }) => {
   const [updatingItemId, setUpdatingItemId] = useState(null);
 
   const handleNextStatus = async (item) => {
-    let nextStatus = 'Preparing';
-    if (item.status === 'Preparing') nextStatus = 'Ready';
-    if (item.status === 'Ready') nextStatus = 'Served';
+  if (item.status === 'Ready') return; // Station staff stop at 'Ready'
 
-    setUpdatingItemId(item.order_item_id);
+  let nextStatus = 'Preparing';
+  if (item.status === 'Preparing') nextStatus = 'Ready';
+
+  setUpdatingItemId(item.order_item_id);
+  try {
     await onUpdateItemStatus(item.order_item_id, nextStatus);
+  } finally {
     setUpdatingItemId(null);
-  };
+  }
+};
 
   if (!tickets || tickets.length === 0) {
     return (
@@ -88,24 +92,24 @@ const TicketQueue = ({ tickets, onUpdateItemStatus }) => {
                     </div>
 
                     <button
-                      onClick={() => handleNextStatus(item)}
-                      disabled={updatingItemId === item.order_item_id}
-                      className={`w-full py-1.5 text-[11px] font-extrabold rounded transition disabled:opacity-50 ${
-                        isReady
-                          ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                          : isPreparing
-                          ? 'bg-blue-600 text-white hover:bg-blue-700'
-                          : 'bg-amber-500 text-white hover:bg-amber-600'
-                      }`}
-                    >
-                      {updatingItemId === item.order_item_id
-                        ? 'Updating...'
-                        : isReady
-                        ? '✓ Ready'
+                    onClick={() => handleNextStatus(item)}
+                    disabled={updatingItemId === item.order_item_id || isReady}
+                    className={`w-full py-1.5 text-[11px] font-extrabold rounded transition disabled:opacity-75 ${
+                      isReady
+                        ? 'bg-emerald-600 text-white cursor-default'
                         : isPreparing
-                        ? '🔔 Mark as Ready'
-                        : '👨‍🍳 Start Cooking'}
-                    </button>
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-amber-500 text-white hover:bg-amber-600'
+                    }`}
+                  >
+                    {updatingItemId === item.order_item_id
+                      ? 'Updating...'
+                      : isReady
+                      ? '✓ Ready for Pickup'
+                      : isPreparing
+                      ? '🔔 Mark as Ready'
+                      : '👨‍🍳 Start Preparing'}
+                  </button>
                   </div>
                 );
               })}

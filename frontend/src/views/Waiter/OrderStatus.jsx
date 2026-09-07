@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const OrderStatus = () => {
+const OrderStatus = ({ onRefreshNotifications }) => {
   const { token } = useContext(AuthContext);
   const [liveOrders, setLiveOrders] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -10,35 +10,31 @@ const OrderStatus = () => {
   const [error, setError] = useState('');
 
   // Fetch live orders and waiter notifications safely
-  const fetchData = async () => {
-    try {
-      const headers = { Authorization: `Bearer ${token || localStorage.getItem('token')}` };
+const fetchData = async () => {
+  try {
+    const headers = { Authorization: `Bearer ${token || localStorage.getItem('token')}` };
 
-      const [ordersRes, notifsRes] = await Promise.all([
-        fetch('http://localhost:5000/api/v1/orders/live', { headers }),
-        fetch('http://localhost:5000/api/v1/orders/notifications', { headers }),
-      ]);
+    const ordersRes = await fetch('http://localhost:5000/api/v1/orders/live', { headers });
 
-      // Handle HTML error pages safely
-      if (!ordersRes.ok) {
-        const text = await ordersRes.text();
-        throw new Error(`Orders fetch failed (${ordersRes.status})`);
-      }
-
-      const ordersJson = await ordersRes.json();
-      const notifsJson = notifsRes.ok ? await notifsRes.json() : { data: [] };
-
-      const extractedTables = ordersJson.data || (Array.isArray(ordersJson) ? ordersJson : []);
-      const extractedNotifs = notifsJson.data || (Array.isArray(notifsJson) ? notifsJson : []);
-
-      setLiveOrders(extractedTables);
-      setNotifications(extractedNotifs);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+    if (!ordersRes.ok) {
+      throw new Error(`Orders fetch failed (${ordersRes.status})`);
     }
-  };
+
+    const ordersJson = await ordersRes.json();
+    const extractedTables = ordersJson.data || (Array.isArray(ordersJson) ? ordersJson : []);
+
+    setLiveOrders(extractedTables);
+    
+    // Trigger parent workspace to refresh shared notifications
+    if (onRefreshNotifications) {
+      onRefreshNotifications?.();
+    }
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchData();

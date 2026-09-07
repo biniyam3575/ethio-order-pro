@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { getAwaitingBillOrders, processPayment } = require('../controllers/billingController');
+const { getAwaitingBillOrders, processPayment, getPaymentHistory } = require('../controllers/billingController');
 
 router.get(
   '/awaiting-bill',
@@ -15,6 +15,13 @@ router.post(
   authenticateToken,
   requireRole(['Cashier', 'Manager', 'General Manager', 'Owner']),
   processPayment
+);
+
+router.get(
+  '/history',
+  authenticateToken,
+  requireRole(['Cashier', 'Manager', 'General Manager', 'Owner']),
+  getPaymentHistory
 );
 
 module.exports = router;

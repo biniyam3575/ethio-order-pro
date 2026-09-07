@@ -1,8 +1,7 @@
 const { pool } = require('../config/db');
 
 /**
- * Fetch grouped bill requests by table (Consolidated Table Billing)
- * Returns all active orders with 'Awaiting_Bill' status along with line items.
+ * Fetch grouped bill requests by table
  */
 const getAwaitingBillOrders = async (req, res) => {
   try {
@@ -24,6 +23,7 @@ const getAwaitingBillOrders = async (req, res) => {
             JSON_BUILD_OBJECT(
               'order_id', o.order_id,
               'created_at', o.created_at,
+              'discount_amount', o.discount_amount,
               'items', items_by_order.items
             )
           ), '[]'
@@ -62,8 +62,8 @@ const getAwaitingBillOrders = async (req, res) => {
 
 /**
  * Process payment for an ENTIRE TABLE
- * Settles all table orders, saves the fiscal machine receipt number, computes exact cash change, 
- * resets table availability, and logs tax audit figures.
+ * Automatically uses approved discount stored on orders.
+ * Payment reference and Fiscal Receipt No are optional.
  */
 const processPayment = async (req, res) => {
   const client = await pool.connect();
@@ -72,12 +72,10 @@ const processPayment = async (req, res) => {
       tableId, 
       payment_method, 
       payment_ref, 
-      discount_amount, 
       cash_received, 
       fiscal_receipt_no 
     } = req.body;
     
-    // Fallback check for staff ID across token payloads
     const staff_id = req.user?.staff_id || req.user?.user_id;
 
     if (!staff_id) {
@@ -88,16 +86,16 @@ const processPayment = async (req, res) => {
       return res.status(400).json({ message: 'Table ID is required to process table payment.' });
     }
 
-    const validMethods = ['Cash', 'Telebirr', 'CBE_Birr', 'CBE Birr'];
+    const validMethods = ['Cash', 'Telebirr', 'CBE_Birr', 'CBE Birr', 'Card'];
     if (!validMethods.includes(payment_method)) {
       return res.status(400).json({ message: 'Invalid payment method selected.' });
     }
 
     await client.query('BEGIN');
 
-    // 1. Lock and fetch all orders awaiting bill for this table, including tax breakdowns
+    // 1. Fetch active unpaid orders for this table
     const ordersRes = await client.query(
-      `SELECT order_id, subtotal, service_charge, vat_amount, total_amount 
+      `SELECT order_id, subtotal, service_charge, vat_amount, discount_amount, total_amount 
        FROM orders 
        WHERE table_id = $1 AND status = 'Awaiting_Bill' 
        FOR UPDATE;`,
@@ -109,23 +107,30 @@ const processPayment = async (req, res) => {
       return res.status(404).json({ message: 'No billable orders found for this table.' });
     }
 
-    // Cast IDs to string array to safely handle both UUID and INT primary key types
-    const orderIds = ordersRes.rows.map(o => String(o.order_id));
+    const orderIds = ordersRes.rows.map(o => o.order_id);
 
-    // Calculate aggregated financial metrics
+    // Aggregate totals from database fields (which include manager-approved discounts)
     const totalSubtotal = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.subtotal || 0), 0);
     const totalServiceCharge = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.service_charge || 0), 0);
     const totalVat = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.vat_amount || 0), 0);
-    const groupTotal = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
-    
-    const globalDiscount = parseFloat(discount_amount) || 0.00;
-    const finalGrandTotal = Math.max(0, groupTotal - globalDiscount);
+    const totalDiscount = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.discount_amount || 0), 0);
+    const finalGrandTotal = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
 
     const cashGiven = parseFloat(cash_received) || 0.00;
     const changeGiven = payment_method === 'Cash' ? Math.max(0, cashGiven - finalGrandTotal) : 0.00;
 
-    // 2. Mark all targeted table orders as Paid
-    // Using order_id::text = ANY($7::text[]) prevents Postgres type-casting crashes (INT vs UUID)
+    if (payment_method === 'Cash' && cashGiven < finalGrandTotal) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        message: `Insufficient cash provided. Amount due is ETB ${finalGrandTotal.toFixed(2)}.`
+      });
+    }
+
+    // Optional fields fallback
+    const refValue = payment_ref && payment_ref.trim() !== '' ? payment_ref.trim() : null;
+    const fiscalValue = fiscal_receipt_no && fiscal_receipt_no.trim() !== '' ? fiscal_receipt_no.trim() : null;
+
+    // 2. Mark target orders as Paid
     await client.query(
       `
       UPDATE orders
@@ -137,20 +142,32 @@ const processPayment = async (req, res) => {
           change_given = $5,
           fiscal_receipt_no = $6,
           paid_at = NOW()
-      WHERE order_id::text = ANY($7::text[]);
+      WHERE order_id = ANY($7::int[]);
       `,
       [
         payment_method, 
-        payment_ref || null, 
+        refValue, 
         staff_id, 
         cashGiven, 
         changeGiven, 
-        fiscal_receipt_no || null, 
+        fiscalValue, 
         orderIds
       ]
     );
 
-    // 3. Set Table to Available if no active orders remain
+    // 3. Update active cashier shift register expected cash
+    if (payment_method === 'Cash') {
+      await client.query(
+        `
+        UPDATE cashier_shifts
+        SET expected_cash = expected_cash + $1
+        WHERE cashier_id = $2 AND status = 'Open';
+        `,
+        [finalGrandTotal, staff_id]
+      );
+    }
+
+    // 4. Free table to Available if no other open orders remain
     const remainingOrdersRes = await client.query(
       `SELECT COUNT(*)::int AS active_count 
        FROM orders 
@@ -165,16 +182,16 @@ const processPayment = async (req, res) => {
       );
     }
 
-    // 4. Dismiss cashier notifications for these orders
+    // 5. Dismiss Cashier notifications
     await client.query(
       `UPDATE notifications 
        SET is_read = TRUE 
-       WHERE order_id::text = ANY($1::text[]) AND (recipient_role = 'Cashier' OR recipient_role = 'All');`,
+       WHERE order_id = ANY($1::int[]) AND (recipient_role = 'Cashier' OR recipient_role = 'All');`,
       [orderIds]
     );
 
-    // 5. Log audit record for cashier/manager tax matching & reconciliation
-    const auditDetails = `Fiscal #: ${fiscal_receipt_no || 'N/A'} | Subtotal: ${totalSubtotal.toFixed(2)} ETB | Service (10%): ${totalServiceCharge.toFixed(2)} ETB | VAT (15%): ${totalVat.toFixed(2)} ETB | Discount: ${globalDiscount.toFixed(2)} ETB | Net Total: ${finalGrandTotal.toFixed(2)} ETB | Method: ${payment_method}`;
+    // 6. Audit Logging
+    const auditDetails = `Fiscal #: ${fiscalValue || 'N/A'} | Subtotal: ${totalSubtotal.toFixed(2)} ETB | Service: ${totalServiceCharge.toFixed(2)} ETB | VAT: ${totalVat.toFixed(2)} ETB | Approved Discount: ${totalDiscount.toFixed(2)} ETB | Final Net: ${finalGrandTotal.toFixed(2)} ETB | Method: ${payment_method}`;
 
     await client.query(
       `INSERT INTO audit_logs (user_id, action, target_record, details)
@@ -186,18 +203,21 @@ const processPayment = async (req, res) => {
 
     return res.status(200).json({ 
       success: true, 
-      message: 'Table payment finalized and fiscal tax record saved successfully.',
-      change_given: changeGiven,
-      audit: {
+      message: 'Payment processed and stored in settlement history.',
+      data: {
         table_id: tableId,
-        orders_cleared: orderIds,
+        order_ids: orderIds,
+        payment_method,
+        payment_ref: refValue,
+        fiscal_receipt_no: fiscalValue,
         subtotal: totalSubtotal,
         service_charge: totalServiceCharge,
         vat_amount: totalVat,
+        discount_amount: totalDiscount,
         grand_total: finalGrandTotal,
         cash_received: cashGiven,
         change_given: changeGiven,
-        fiscal_receipt_no: fiscal_receipt_no || 'N/A'
+        paid_at: new Date()
       }
     });
   } catch (error) {
@@ -209,4 +229,46 @@ const processPayment = async (req, res) => {
   }
 };
 
-module.exports = { getAwaitingBillOrders, processPayment };
+/**
+ * Fetch Payment & Settlement History for Dashboard
+ */
+const getPaymentHistory = async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        o.order_id,
+        o.table_id,
+        t.table_number,
+        o.subtotal,
+        o.service_charge,
+        o.vat_amount,
+        o.discount_amount,
+        o.total_amount,
+        o.payment_method,
+        o.payment_ref,
+        o.fiscal_receipt_no,
+        o.paid_at,
+        s_cashier.full_name AS cashier_name,
+        s_waiter.full_name AS waiter_name
+      FROM orders o
+      JOIN tables t ON o.table_id = t.table_id
+      LEFT JOIN staff s_cashier ON o.cashier_id = s_cashier.staff_id
+      LEFT JOIN staff s_waiter ON o.waiter_id = s_waiter.staff_id
+      WHERE o.status = 'Paid'
+      ORDER BY o.paid_at DESC
+      LIMIT 100;
+    `;
+
+    const { rows } = await pool.query(query);
+    return res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Get Payment History Error:', error);
+    return res.status(500).json({ message: 'Failed to retrieve payment history.' });
+  }
+};
+
+module.exports = { 
+  getAwaitingBillOrders, 
+  processPayment,
+  getPaymentHistory 
+};

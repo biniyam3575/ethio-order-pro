@@ -1,18 +1,129 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import TicketQueue from './TicketQueue';
 import InverntoryToggle from './InverntoryToggle';
 import { AuthContext } from '../../context/AuthContext';
 
 const KitchenView = () => {
   const { token } = useContext(AuthContext);
-  const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'inventory'
+  const [activeTab, setActiveTab] = useState('queue');
   const [tickets, setTickets] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Fetch kitchen-specific tickets (?station=Kitchen) and menu items
-  const fetchKitchenData = async () => {
+  // Notifications State
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
+
+  const audioRef = useRef(null);
+  const previousNotificationIdsRef = useRef(new Set());
+  const isFirstFetchRef = useRef(true);
+
+  // Initialize Audio Object
+  useEffect(() => {
+    audioRef.current = new Audio('/notification.mp3');
+    audioRef.current.load();
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const playNotificationSound = useCallback(() => {
+    if (!audioRef.current) return;
+
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().then(() => {
+      setIsAudioUnlocked(true);
+    }).catch((err) => {
+      setIsAudioUnlocked(false);
+      console.warn('Audio playback blocked until user interacts with document:', err);
+    });
+  }, []);
+
+  const handleUnlockAudio = useCallback(() => {
+    if (!audioRef.current) return;
+
+    audioRef.current.play().then(() => {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setIsAudioUnlocked(true);
+    }).catch(() => {
+      setIsAudioUnlocked(false);
+    });
+  }, []);
+
+  // Fetch Notifications
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const authToken = token || localStorage.getItem('token');
+      if (!authToken) return;
+
+      const response = await fetch('http://localhost:5000/api/v1/orders/notifications', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.message || 'Failed to fetch notifications.');
+
+      const fetchedData = json.data || (Array.isArray(json) ? json : []);
+
+      const currentNotificationIds = new Set(
+        fetchedData.map((notif) => String(notif.notification_id || notif.id))
+      );
+
+      const previousIds = previousNotificationIdsRef.current;
+
+      // Check if any fetched notification ID wasn't present in previous poll
+      const hasNewNotification = fetchedData.some((notif) => {
+        const id = String(notif.notification_id || notif.id);
+        return !previousIds.has(id);
+      });
+
+      // Avoid chiming on initial page load
+      if (hasNewNotification && !isFirstFetchRef.current) {
+        playNotificationSound();
+      }
+
+      isFirstFetchRef.current = false;
+      previousNotificationIdsRef.current = currentNotificationIds;
+      setNotifications(fetchedData);
+    } catch (err) {
+      console.error('Failed to fetch kitchen notifications:', err);
+    }
+  }, [token, playNotificationSound]);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 5000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  const handleAcknowledgeNotification = async (notificationId) => {
+    try {
+      const authToken = token || localStorage.getItem('token');
+
+      setNotifications((prev) =>
+        prev.filter((n) => (n.notification_id || n.id) !== notificationId)
+      );
+
+      await fetch(`http://localhost:5000/api/v1/orders/notifications/${notificationId}/read`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      fetchNotifications();
+    } catch (err) {
+      console.error('Failed to dismiss notification:', err);
+      fetchNotifications();
+    }
+  };
+
+  const fetchKitchenData = useCallback(async () => {
     try {
       const headers = { Authorization: `Bearer ${token || localStorage.getItem('token')}` };
 
@@ -26,22 +137,21 @@ const KitchenView = () => {
 
       if (!ticketsRes.ok) throw new Error(ticketsJson.message || 'Failed to fetch tickets.');
 
-      setTickets(Array.isArray(ticketsJson) ? ticketsJson : (ticketsJson.data || []));
-      setMenuItems(Array.isArray(menuJson) ? menuJson : (menuJson.data || []));
+      setTickets(Array.isArray(ticketsJson) ? ticketsJson : ticketsJson.data || []);
+      setMenuItems(Array.isArray(menuJson) ? menuJson : menuJson.data || []);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchKitchenData();
     const interval = setInterval(fetchKitchenData, 5000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [fetchKitchenData]);
 
-  // Update specific order item status via /api/v1/orders/item/:orderItemId/status
   const handleUpdateItemStatus = async (orderItemId, newStatus) => {
     try {
       const response = await fetch(`http://localhost:5000/api/v1/orders/item/${orderItemId}/status`, {
@@ -60,12 +170,10 @@ const KitchenView = () => {
 
       fetchKitchenData();
     } catch (err) {
-      console.error('Error updating status:', err);
       setError(err.message);
     }
   };
 
-  // Toggle inventory item availability
   const handleToggleStock = async (itemId, isAvailable) => {
     try {
       await fetch(`http://localhost:5000/api/v1/menu/${itemId}/availability`, {
@@ -76,6 +184,7 @@ const KitchenView = () => {
         },
         body: JSON.stringify({ isAvailable }),
       });
+
       fetchKitchenData();
     } catch (err) {
       console.error('Failed to update stock:', err);
@@ -92,62 +201,122 @@ const KitchenView = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      {/* Header */}
+    <div onClick={handleUnlockAudio} className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+      {!isAudioUnlocked && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-xl text-xs flex justify-between items-center shadow-sm">
+          <span>🔊 Audio alerts require user activation. Click anywhere to enable kitchen chime notifications.</span>
+          <button onClick={handleUnlockAudio} className="font-extrabold underline text-amber-900 ml-2">
+            Enable Sound
+          </button>
+        </div>
+      )}
+
+      {/* Header & Navigation Controls */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
             🍳 Kitchen Station Terminal
           </h1>
-          <p className="text-xs text-gray-500 font-medium">
-            Food Line Orders • Live Preparation Queue
-          </p>
+          <p className="text-xs text-gray-500 font-medium">Food Line Orders • Live Preparation Queue</p>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
-          <button
-            onClick={() => setActiveTab('queue')}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition ${
-              activeTab === 'queue'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            📋 Food Queue ({tickets.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('inventory')}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition ${
-              activeTab === 'inventory'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            📦 86 Inventory
-          </button>
-          <button
-            onClick={fetchKitchenData}
-            className="px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg ml-2 transition"
-          >
-            🔄 Refresh
-          </button>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          {/* Notification Bell */}
+          <div className="relative w-full sm:w-auto">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowNotifDropdown((prev) => !prev);
+              }}
+              className="px-3 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition flex items-center justify-center gap-2 text-xs font-bold text-amber-900 shadow-sm w-full sm:w-auto"
+            >
+              🔔
+              {notifications.length > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-black bg-red-600 text-white rounded-full animate-pulse shadow-sm">
+                  {notifications.length}
+                </span>
+              )}
+            </button>
+
+            {showNotifDropdown && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3 space-y-2"
+              >
+                <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+                  <span className="font-bold text-xs text-gray-800">New Kitchen Orders</span>
+                  <button onClick={() => setShowNotifDropdown(false)} className="text-gray-400 hover:text-gray-600 text-xs font-bold">
+                    ✕
+                  </button>
+                </div>
+
+                {notifications.length === 0 ? (
+                  <div className="text-center py-4 text-xs text-gray-400">No new orders right now</div>
+                ) : (
+                  <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar">
+                    {notifications.map((notification) => {
+                      const id = notification.notification_id || notification.id;
+                      return (
+                        <div key={id} className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex flex-col gap-2">
+                          <span className="text-xs font-semibold text-gray-800">{notification.message}</span>
+                          <button
+                            onClick={() => {
+                              handleAcknowledgeNotification(id);
+                              setShowNotifDropdown(false);
+                            }}
+                            className="self-end px-2.5 py-1 bg-blue-600 text-white text-[10px] font-bold rounded hover:bg-blue-700 transition"
+                          >
+                            ✓ Dismiss Alert
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
+            <button
+              onClick={() => setActiveTab('queue')}
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition ${
+                activeTab === 'queue' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              📋 Food Queue ({tickets.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('inventory')}
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition ${
+                activeTab === 'inventory' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              📦 86 Inventory
+            </button>
+            <button
+              onClick={fetchKitchenData}
+              className="px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg ml-2 transition"
+            >
+              🔄 Refresh
+            </button>
+          </div>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-700 p-3 rounded-lg text-xs border border-red-200">
-          {error}
+        <div className="bg-red-50 text-red-700 p-3 rounded-lg text-xs border border-red-200 flex justify-between items-center">
+          <span>{error}</span>
+          <button onClick={() => setError('')} className="font-bold">✕</button>
         </div>
       )}
 
-      {/* Main Content */}
       {activeTab === 'queue' ? (
         <TicketQueue tickets={tickets} onUpdateItemStatus={handleUpdateItemStatus} />
       ) : (
-        <InverntoryToggle 
-          menuItems={menuItems.filter(item => item.station === 'Kitchen')} 
-          onToggleStock={handleToggleStock} 
+        <InverntoryToggle
+          menuItems={menuItems.filter((item) => item.station === 'Kitchen')}
+          onToggleStock={handleToggleStock}
         />
       )}
     </div>

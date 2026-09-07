@@ -43,6 +43,7 @@ const DashboardOverview = () => {
           >
             Logout
           </button>
+          </div>
         </div>
 
         {/* Tab Navigation Menu */}
@@ -72,7 +73,6 @@ const DashboardOverview = () => {
           {activeTab === 'audit' && isOwner && <AuditLogs />}
         </div>
       </div>
-    </div>
   );
 };
 

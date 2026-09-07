@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import FloorPlanGrid from './FloorPlanGrid';
 import OrderEntry from './OrderEntry';
 import OrderStatus from './OrderStatus';
@@ -13,6 +13,41 @@ const WaiterWorkspace = () => {
   const [notifications, setNotifications] = useState([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
+  // Audio Reference for sound playback
+  const audioRef = useRef(null);
+  const previousCountRef = useRef(0);
+
+  // Initialize audio object pointing to /public/notification.mp3
+  // Inside WaiterWorkspace.jsx
+useEffect(() => {
+  audioRef.current = new Audio('/notification.mp3');
+  
+  // Unlock audio policy on first user interaction anywhere in workspace
+  const unlockAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.play().then(() => {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }).catch(() => {});
+    }
+    window.removeEventListener('click', unlockAudio);
+  };
+
+  window.addEventListener('click', unlockAudio);
+  return () => window.removeEventListener('click', unlockAudio);
+}, []);
+
+  // Helper function to safely play notification chime
+  const playNotificationSound = () => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch((err) => {
+        // Silently catch browser autoplay policies prior to user interaction
+        console.warn('Audio playback waiting for initial user interaction:', err);
+      });
+    }
+  };
+
   // Fetch waiter notifications across all workspace views
   const fetchNotifications = async () => {
     try {
@@ -21,7 +56,15 @@ const WaiterWorkspace = () => {
       });
       const json = await response.json();
       if (response.ok) {
-        setNotifications(json.data || (Array.isArray(json) ? json : []));
+        const fetchedData = json.data || (Array.isArray(json) ? json : []);
+        
+        // Trigger sound alert only if new notifications arrive
+        if (fetchedData.length > previousCountRef.current) {
+          playNotificationSound();
+        }
+
+        previousCountRef.current = fetchedData.length;
+        setNotifications(fetchedData);
       }
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
@@ -81,7 +124,7 @@ const WaiterWorkspace = () => {
               onClick={() => setShowNotifDropdown(!showNotifDropdown)}
               className="w-full sm:w-auto px-3 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition flex items-center justify-center gap-2 text-xs font-bold text-amber-900 shadow-sm"
             >
-              🔔 Notifications
+              🔔
               {notifications.length > 0 && (
                 <span className="px-1.5 py-0.5 text-[10px] font-black bg-red-600 text-white rounded-full animate-pulse">
                   {notifications.length}
@@ -201,7 +244,12 @@ const WaiterWorkspace = () => {
         </>
       )}
 
-      {activeTab === 'liveStatus' && <OrderStatus />}
+      {activeTab === 'liveStatus' && (
+        <OrderStatus 
+        notifications={notifications} 
+        onRefreshNotifications={fetchNotifications} 
+      />
+    )}
     </div>
   );
 };

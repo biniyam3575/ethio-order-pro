@@ -1,11 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { getPendingDiscounts, reviewDiscountRequest } = require('../controllers/discountController');
-const { authenticateToken, requireManager } = require('../middleware/auth');
+const { requestDiscount, getPendingDiscounts, reviewDiscountRequest } = require('../controllers/discountController');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 
-router.use(authenticateToken, requireManager);
+// Waiter submits request
+router.post('/request', authenticateToken, requireRole(['Waiter', 'Manager', 'Owner']), requestDiscount);
 
-router.get('/pending', getPendingDiscounts);
-router.put('/:id/review', reviewDiscountRequest);
+// Manager / GM / Owner reviews
+router.get('/pending', authenticateToken, requireRole(['Manager', 'General Manager', 'Owner']), getPendingDiscounts);
+router.put('/:id/review', authenticateToken, requireRole(['Manager', 'General Manager', 'Owner']), reviewDiscountRequest);
 
 module.exports = router;
