@@ -9,6 +9,9 @@ const {
   getLiveOrders,
   updateOrderStatus,
   requestBill,
+  cancelOrder,
+  cancelOrderItem,
+  dismissStationOrder,
 } = require('../controllers/orderController');
 
 const {
@@ -26,6 +29,7 @@ const {
 | ORDER MANAGEMENT ROUTES
 |--------------------------------------------------------------------------
 */
+router.post('/station/dismiss', authenticateToken, dismissStationOrder);
 
 // Create a new order
 router.post('/', authenticateToken, createOrder);
@@ -58,6 +62,22 @@ router.post(
   authenticateToken,
   requireRole(['Cashier', 'General Manager', 'Owner']),
   processPayment
+);
+
+// Cancel an entire order ticket
+router.put(
+  '/:orderId/cancel',
+  authenticateToken,
+  requireRole(['Waiter', 'General Manager', 'Owner']),
+  cancelOrder
+);
+
+// 2. Cancel a single line item within an order ticket
+router.put(
+  '/:orderId/items/:itemId/cancel',
+  authenticateToken,
+  requireRole(['Waiter', 'General Manager', 'Owner']),
+  cancelOrderItem
 );
 
 // Notification endpoints

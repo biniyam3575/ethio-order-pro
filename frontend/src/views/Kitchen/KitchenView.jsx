@@ -14,7 +14,6 @@ const KitchenView = () => {
   // Notifications State
   const [notifications, setNotifications] = useState([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
-  const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
 
   const audioRef = useRef(null);
   const previousNotificationIdsRef = useRef(new Set());
@@ -37,11 +36,8 @@ const KitchenView = () => {
     if (!audioRef.current) return;
 
     audioRef.current.currentTime = 0;
-    audioRef.current.play().then(() => {
-      setIsAudioUnlocked(true);
-    }).catch((err) => {
-      setIsAudioUnlocked(false);
-      console.warn('Audio playback blocked until user interacts with document:', err);
+    audioRef.current.play().catch((err) => {
+      console.warn('Audio playback waiting for user interaction:', err);
     });
   }, []);
 
@@ -51,10 +47,7 @@ const KitchenView = () => {
     audioRef.current.play().then(() => {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
-      setIsAudioUnlocked(true);
-    }).catch(() => {
-      setIsAudioUnlocked(false);
-    });
+    }).catch(() => {});
   }, []);
 
   // Fetch Notifications
@@ -63,9 +56,14 @@ const KitchenView = () => {
       const authToken = token || localStorage.getItem('token');
       if (!authToken) return;
 
-      const response = await fetch('http://localhost:5000/api/v1/orders/notifications', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const response = await fetch(
+        'http://localhost:5000/api/v1/orders/notifications?station=Kitchen',
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        }
+      );
 
       const json = await response.json();
       if (!response.ok) throw new Error(json.message || 'Failed to fetch notifications.');
@@ -202,15 +200,6 @@ const KitchenView = () => {
 
   return (
     <div onClick={handleUnlockAudio} className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      {!isAudioUnlocked && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-xl text-xs flex justify-between items-center shadow-sm">
-          <span>🔊 Audio alerts require user activation. Click anywhere to enable kitchen chime notifications.</span>
-          <button onClick={handleUnlockAudio} className="font-extrabold underline text-amber-900 ml-2">
-            Enable Sound
-          </button>
-        </div>
-      )}
-
       {/* Header & Navigation Controls */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div>
@@ -312,8 +301,12 @@ const KitchenView = () => {
       )}
 
       {activeTab === 'queue' ? (
-        <TicketQueue tickets={tickets} onUpdateItemStatus={handleUpdateItemStatus} />
-      ) : (
+      <TicketQueue
+        tickets={tickets}
+        currentStation="Kitchen"
+        token={token}
+        onUpdateItemStatus={handleUpdateItemStatus}
+      />      ) : (
         <InverntoryToggle
           menuItems={menuItems.filter((item) => item.station === 'Kitchen')}
           onToggleStock={handleToggleStock}

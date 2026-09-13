@@ -16,14 +16,12 @@ const getAwaitingBillOrders = async (req, res) => {
         SUM(o.subtotal) AS total_subtotal,
         SUM(o.service_charge) AS total_service_charge,
         SUM(o.vat_amount) AS total_vat,
-        SUM(o.discount_amount) AS total_discount,
         SUM(o.total_amount) AS group_total_amount,
         COALESCE(
           JSON_AGG(
             JSON_BUILD_OBJECT(
               'order_id', o.order_id,
               'created_at', o.created_at,
-              'discount_amount', o.discount_amount,
               'items', items_by_order.items
             )
           ), '[]'
@@ -62,8 +60,6 @@ const getAwaitingBillOrders = async (req, res) => {
 
 /**
  * Process payment for an ENTIRE TABLE
- * Automatically uses approved discount stored on orders.
- * Payment reference and Fiscal Receipt No are optional.
  */
 const processPayment = async (req, res) => {
   const client = await pool.connect();
@@ -95,7 +91,7 @@ const processPayment = async (req, res) => {
 
     // 1. Fetch active unpaid orders for this table
     const ordersRes = await client.query(
-      `SELECT order_id, subtotal, service_charge, vat_amount, discount_amount, total_amount 
+      `SELECT order_id, subtotal, service_charge, vat_amount, total_amount 
        FROM orders 
        WHERE table_id = $1 AND status = 'Awaiting_Bill' 
        FOR UPDATE;`,
@@ -109,11 +105,10 @@ const processPayment = async (req, res) => {
 
     const orderIds = ordersRes.rows.map(o => o.order_id);
 
-    // Aggregate totals from database fields (which include manager-approved discounts)
+    // Aggregate totals from database fields
     const totalSubtotal = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.subtotal || 0), 0);
     const totalServiceCharge = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.service_charge || 0), 0);
     const totalVat = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.vat_amount || 0), 0);
-    const totalDiscount = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.discount_amount || 0), 0);
     const finalGrandTotal = ordersRes.rows.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
 
     const cashGiven = parseFloat(cash_received) || 0.00;
@@ -126,7 +121,6 @@ const processPayment = async (req, res) => {
       });
     }
 
-    // Optional fields fallback
     const refValue = payment_ref && payment_ref.trim() !== '' ? payment_ref.trim() : null;
     const fiscalValue = fiscal_receipt_no && fiscal_receipt_no.trim() !== '' ? fiscal_receipt_no.trim() : null;
 
@@ -182,16 +176,16 @@ const processPayment = async (req, res) => {
       );
     }
 
-    // 5. Dismiss Cashier notifications
+    // 5. Dismiss notifications for settled orders
     await client.query(
       `UPDATE notifications 
-       SET is_read = TRUE 
-       WHERE order_id = ANY($1::int[]) AND (recipient_role = 'Cashier' OR recipient_role = 'All');`,
+      SET is_read = TRUE 
+      WHERE order_id = ANY($1::int[]) AND is_read = FALSE;`,
       [orderIds]
     );
 
     // 6. Audit Logging
-    const auditDetails = `Fiscal #: ${fiscalValue || 'N/A'} | Subtotal: ${totalSubtotal.toFixed(2)} ETB | Service: ${totalServiceCharge.toFixed(2)} ETB | VAT: ${totalVat.toFixed(2)} ETB | Approved Discount: ${totalDiscount.toFixed(2)} ETB | Final Net: ${finalGrandTotal.toFixed(2)} ETB | Method: ${payment_method}`;
+    const auditDetails = `Fiscal #: ${fiscalValue || 'N/A'} | Subtotal: ${totalSubtotal.toFixed(2)} ETB | Service: ${totalServiceCharge.toFixed(2)} ETB | VAT: ${totalVat.toFixed(2)} ETB | Final Net: ${finalGrandTotal.toFixed(2)} ETB | Method: ${payment_method}`;
 
     await client.query(
       `INSERT INTO audit_logs (user_id, action, target_record, details)
@@ -213,7 +207,6 @@ const processPayment = async (req, res) => {
         subtotal: totalSubtotal,
         service_charge: totalServiceCharge,
         vat_amount: totalVat,
-        discount_amount: totalDiscount,
         grand_total: finalGrandTotal,
         cash_received: cashGiven,
         change_given: changeGiven,
@@ -230,36 +223,56 @@ const processPayment = async (req, res) => {
 };
 
 /**
- * Fetch Payment & Settlement History for Dashboard
+ * Fetch Payment & Settlement History
  */
 const getPaymentHistory = async (req, res) => {
   try {
+    const { date } = req.query;
+
+    let dateFilterClause = '';
+    const queryParams = [];
+
+    if (date) {
+      dateFilterClause = 'WHERE o.status = $1 AND o.paid_at::date = $2::date';
+      queryParams.push('Paid', date);
+    } else {
+      dateFilterClause = 'WHERE o.status = $1 AND o.paid_at::date = CURRENT_DATE';
+      queryParams.push('Paid');
+    }
+
     const query = `
       SELECT 
-        o.order_id,
         o.table_id,
         t.table_number,
-        o.subtotal,
-        o.service_charge,
-        o.vat_amount,
-        o.discount_amount,
-        o.total_amount,
+        o.paid_at,
         o.payment_method,
         o.payment_ref,
         o.fiscal_receipt_no,
-        o.paid_at,
         s_cashier.full_name AS cashier_name,
-        s_waiter.full_name AS waiter_name
+        s_waiter.full_name AS waiter_name,
+        STRING_AGG('#' || o.order_id::text, ', ' ORDER BY o.order_id) AS aggregated_order_ids,
+        SUM(o.total_amount) AS total_amount,
+        SUM(o.subtotal) AS subtotal,
+        SUM(o.service_charge) AS service_charge,
+        SUM(o.vat_amount) AS vat_amount
       FROM orders o
       JOIN tables t ON o.table_id = t.table_id
       LEFT JOIN staff s_cashier ON o.cashier_id = s_cashier.staff_id
       LEFT JOIN staff s_waiter ON o.waiter_id = s_waiter.staff_id
-      WHERE o.status = 'Paid'
-      ORDER BY o.paid_at DESC
-      LIMIT 100;
+      ${dateFilterClause}
+      GROUP BY 
+        o.table_id,
+        t.table_number,
+        o.paid_at,
+        o.payment_method,
+        o.payment_ref,
+        o.fiscal_receipt_no,
+        s_cashier.full_name,
+        s_waiter.full_name
+      ORDER BY o.paid_at DESC;
     `;
 
-    const { rows } = await pool.query(query);
+    const { rows } = await pool.query(query, queryParams);
     return res.status(200).json({ success: true, data: rows });
   } catch (error) {
     console.error('Get Payment History Error:', error);

@@ -298,8 +298,12 @@ const HotDrinksView = () => {
       )}
 
       {activeTab === 'queue' ? (
-        <TicketQueue tickets={tickets} onUpdateItemStatus={handleUpdateItemStatus} />
-      ) : (
+      <TicketQueue
+        tickets={tickets}
+        currentStation="Hot Drinks"
+        token={token}
+        onUpdateItemStatus={handleUpdateItemStatus}
+      />     ) : (
         <InventoryToggle
           menuItems={menuItems.filter((item) => item.station === 'Hot Drinks')}
           onToggleStock={handleToggleStock}

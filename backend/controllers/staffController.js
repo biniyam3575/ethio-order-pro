@@ -17,7 +17,7 @@ const getAllStaff = async (req, res) => {
       FROM staff s
       LEFT JOIN staff_roles r ON s.staff_id = r.staff_id
       GROUP BY s.staff_id
-      HAVING NOT ('Owner' = ANY(ARRAY_AGG(r.role))) -- Excludes Owner from the roster
+      HAVING NOT ('Owner' = ANY(ARRAY_AGG(r.role)))
       ORDER BY s.created_at DESC
     `;
     const { rows } = await pool.query(query);
@@ -28,26 +28,11 @@ const getAllStaff = async (req, res) => {
   }
 };
 
-// PUT /api/v1/staff/:id/status
-const updateStaffStatus = async (req, res) => {
-  const targetId = parseInt(req.params.id);
-  const currentUserId = req.user.staff_id; // Set by auth Middleware
-
-  if (targetId === currentUserId) {
-    return res.status(400).json({ 
-      message: "You cannot deactivate your own active account." 
-    });
-  }
-
-  // Proceed with DB update...
-};
-
-
 // POST /api/v1/staff - Create new staff account
 const createStaff = async (req, res) => {
   const { full_name, username, password, phone, role } = req.body;
   const creatorRoles = req.user?.roles || [];
-  const creatorId = req.user?.staff_id;
+  const creatorId = req.user?.staff_id || req.user?.id || null;
 
   if (!full_name || !username || !password || !role) {
     return res.status(400).json({ message: 'Full name, username, password, and role are required.' });
@@ -100,11 +85,15 @@ const createStaff = async (req, res) => {
     `;
     await client.query(insertRoleQuery, [newStaff.staff_id, role]);
 
-    // 5. Create Audit Log Entry
+    // 5. Create Audit Log Entry (Corrected table & column names to match DB Schema)
     await client.query(`
-      INSERT INTO audit_log (staff_id, action, entity_type, entity_id, details)
-      VALUES ($1, 'CREATE_STAFF', 'staff', $2, $3::jsonb)
-    `, [creatorId, newStaff.staff_id, JSON.stringify({ role, username: newStaff.username })]);
+      INSERT INTO audit_logs (user_id, action, target_record, details)
+      VALUES ($1, 'CREATE_STAFF', $2, $3)
+    `, [
+      creatorId, 
+      `staff:${newStaff.staff_id}`, 
+      `Created staff ${newStaff.username} with role ${role}`
+    ]);
 
     await client.query('COMMIT');
 
@@ -126,49 +115,90 @@ const createStaff = async (req, res) => {
 
 // PUT /api/v1/staff/:id/status - Toggle staff Active/Inactive status
 const toggleStaffStatus = async (req, res) => {
-  const { id } = req.params;
+  const staffId = parseInt(req.params.id, 10);
   const { status } = req.body;
-  const requesterRoles = req.user?.roles || [];
 
-  if (!['Active', 'Inactive'].includes(status)) {
-    return res.status(400).json({ message: 'Invalid status value.' });
+  // 1. Validate Input Params
+  if (isNaN(staffId)) {
+    return res.status(400).json({ message: 'Invalid Staff ID format.' });
   }
 
-  try {
-    // Check target staff user's roles
-    const targetRolesRes = await pool.query('SELECT role FROM staff_roles WHERE staff_id = $1', [id]);
-    const targetRoles = targetRolesRes.rows.map(r => r.role);
+  if (!['Active', 'Inactive'].includes(status)) {
+    return res.status(400).json({ message: 'Invalid status value. Must be Active or Inactive.' });
+  }
 
-    // Prevent Managers from modifying Owner accounts
-    if (targetRoles.includes('Owner') && !requesterRoles.includes('Owner') && !requesterRoles.includes('Super Admin')) {
+  // Extract requester info safely
+  const requesterRoles = req.user?.roles || [];
+  const requesterId = req.user?.staff_id || req.user?.id || req.user?.user_id || null;
+
+  // Prevent self-deactivation
+  if (requesterId && parseInt(requesterId, 10) === staffId) {
+    return res.status(400).json({ message: 'You cannot deactivate your own active account.' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // 2. Fetch target roles to protect Owner accounts
+    const targetRolesRes = await client.query(
+      'SELECT role FROM staff_roles WHERE staff_id = $1',
+      [staffId]
+    );
+    const targetRoles = targetRolesRes.rows.map((r) => r.role);
+
+    if (
+      targetRoles.includes('Owner') &&
+      !requesterRoles.includes('Owner') &&
+      !requesterRoles.includes('Super Admin')
+    ) {
+      await client.query('ROLLBACK');
       return res.status(403).json({ message: 'Forbidden: Managers cannot alter Owner account status.' });
     }
 
-    const query = `
+    // 3. Update Status in staff table
+    const updateQuery = `
       UPDATE staff 
       SET status = $1 
       WHERE staff_id = $2 
-      RETURNING staff_id, full_name, status
+      RETURNING staff_id, full_name, status;
     `;
-    const { rows } = await pool.query(query, [status, id]);
+    const { rows } = await client.query(updateQuery, [status, staffId]);
 
     if (rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Staff member not found.' });
     }
 
-    // Write to audit log
-    await pool.query(`
-      INSERT INTO audit_log (staff_id, action, entity_type, entity_id, details)
-      VALUES ($1, 'TOGGLE_STAFF_STATUS', 'staff', $2, $3::jsonb)
-    `, [req.user?.staff_id, id, JSON.stringify({ new_status: status })]);
+    // 4. Audit Log Entry (Corrected to audit_logs with schema-aligned columns)
+    if (requesterId) {
+      await client.query(
+        `INSERT INTO audit_logs (user_id, action, target_record, details)
+         VALUES ($1, 'TOGGLE_STAFF_STATUS', $2, $3)`,
+        [
+          requesterId, 
+          `staff:${staffId}`, 
+          `Changed status of ${rows[0].full_name} to ${status}`
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
 
     return res.status(200).json({
+      success: true,
       message: `Staff status updated to ${status}.`,
       staff: rows[0],
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Toggle Status Error:', error);
-    return res.status(500).json({ message: 'Failed to update staff status.' });
+    return res.status(500).json({ 
+      message: `Database error: ${error.message || 'Failed to update staff status.'}` 
+    });
+  } finally {
+    client.release();
   }
 };
 
@@ -176,9 +206,10 @@ const toggleStaffStatus = async (req, res) => {
 const deleteStaff = async (req, res) => {
   const { id } = req.params;
   const requesterRoles = req.user?.roles || [];
+  const requesterId = req.user?.staff_id || req.user?.id || null;
 
   try {
-    // Prevent Managers from deleting Owner accounts[cite: 2]
+    // Prevent Managers from deleting Owner accounts
     const targetRolesRes = await pool.query('SELECT role FROM staff_roles WHERE staff_id = $1', [id]);
     const targetRoles = targetRolesRes.rows.map(r => r.role);
 
@@ -186,17 +217,21 @@ const deleteStaff = async (req, res) => {
       return res.status(403).json({ message: 'Forbidden: Managers cannot delete Owner accounts.' });
     }
 
+    // Delete associated roles first if foreign key cascade is missing
+    await pool.query('DELETE FROM staff_roles WHERE staff_id = $1', [id]);
     const result = await pool.query('DELETE FROM staff WHERE staff_id = $1', [id]);
 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Staff member not found.' });
     }
 
-    // Write to audit log[cite: 2]
-    await pool.query(`
-      INSERT INTO audit_log (staff_id, action, entity_type, entity_id)
-      VALUES ($1, 'DELETE_STAFF', 'staff', $2)
-    `, [req.user?.staff_id, id]);
+    // Write to audit_logs (Corrected Table Name and Column Schema)
+    if (requesterId) {
+      await pool.query(`
+        INSERT INTO audit_logs (user_id, action, target_record, details)
+        VALUES ($1, 'DELETE_STAFF', $2, $3)
+      `, [requesterId, `staff:${id}`, `Deleted staff ID ${id}`]);
+    }
 
     return res.status(200).json({ message: 'Staff account deleted permanently.' });
   } catch (error) {
@@ -215,5 +250,4 @@ module.exports = {
   createStaff,
   toggleStaffStatus,
   deleteStaff,
-  updateStaffStatus,
 };

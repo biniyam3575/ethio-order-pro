@@ -56,9 +56,14 @@ const BarView = () => {
       const authToken = token || localStorage.getItem('token');
       if (!authToken) return;
 
-      const response = await fetch('http://localhost:5000/api/v1/orders/notifications', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const response = await fetch(
+        'http://localhost:5000/api/v1/orders/notifications?station=Bar',
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        }
+      );
 
       const json = await response.json();
       if (!response.ok) throw new Error(json.message || 'Failed to fetch notifications.');
@@ -294,7 +299,12 @@ const BarView = () => {
       )}
 
       {activeTab === 'queue' ? (
-        <TicketQueue tickets={tickets} onUpdateItemStatus={handleUpdateItemStatus} />
+        <TicketQueue
+          tickets={tickets}
+          currentStation="Bar"
+          token={token}
+          onUpdateItemStatus={handleUpdateItemStatus}
+        />
       ) : (
         <InverntoryToggle
           menuItems={menuItems.filter((item) => item.station === 'Bar')}

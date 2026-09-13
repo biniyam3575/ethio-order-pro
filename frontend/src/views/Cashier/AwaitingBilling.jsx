@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import PaymentCheckout from './PaymentCheckout';
-import ShiftManager from './ShiftManager'; // Fixed filename casing mismatch
+import ShiftManager from './ShiftManager';
 
 const AwaitingBilling = () => {
   const { token } = useContext(AuthContext);
@@ -12,43 +12,34 @@ const AwaitingBilling = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Calendar Date Filter State
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
   // Notification State
   const [notifications, setNotifications] = useState([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
-  const [audioUnlocked, setAudioUnlocked] = useState(false);
 
-  // Audio Reference for sound playback
+  // Audio Reference & Tracking Flags
   const audioRef = useRef(null);
-  const previousCountRef = useRef(0);
+  const knownNotifIdsRef = useRef(new Set());
+  const isInitialNotifFetch = useRef(true);
 
+  // Preload audio once on mount
   useEffect(() => {
     audioRef.current = new Audio('/notification.mp3');
+    audioRef.current.load();
   }, []);
 
-  // Safe playback function that checks for user interaction
-  const playNotificationSound = () => {
-    if (audioRef.current && audioUnlocked) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch((err) => {
-        console.warn('Audio playback waiting for user interaction:', err);
-      });
-    }
-  };
+  // Safe isolated sound player
+  const playNotificationSound = useCallback(() => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(() => {
+      // Browsers require initial user gesture before playing audio
+    });
+  }, []);
 
-  // Unlock audio context on user's first click anywhere in the component
-  const handleUnlockAudio = () => {
-    if (!audioUnlocked && audioRef.current) {
-      audioRef.current.play().then(() => {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-        setAudioUnlocked(true);
-      }).catch(() => {
-        // User interaction still pending
-      });
-    }
-  };
-
-  // Fetch cashier notifications
+  // Fetch Notifications strictly isolated from UI clicks
   const fetchNotifications = useCallback(async () => {
     try {
       const authToken = token || localStorage.getItem('token');
@@ -56,20 +47,33 @@ const AwaitingBilling = () => {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const json = await response.json();
+
       if (response.ok) {
         const fetchedData = json.data || (Array.isArray(json) ? json : []);
+        let hasBrandNewNotification = false;
 
-        if (fetchedData.length > previousCountRef.current) {
+        fetchedData.forEach((n) => {
+          const notifId = n.notification_id || n.id;
+          if (notifId && !knownNotifIdsRef.current.has(notifId)) {
+            if (!isInitialNotifFetch.current) {
+              hasBrandNewNotification = true;
+            }
+            knownNotifIdsRef.current.add(notifId);
+          }
+        });
+
+        isInitialNotifFetch.current = false;
+
+        if (hasBrandNewNotification) {
           playNotificationSound();
         }
 
-        previousCountRef.current = fetchedData.length;
         setNotifications(fetchedData);
       }
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
     }
-  }, [token, audioUnlocked]);
+  }, [token, playNotificationSound]);
 
   const handleAcknowledgeNotification = async (notificationId) => {
     try {
@@ -112,9 +116,11 @@ const AwaitingBilling = () => {
   const fetchPaymentHistory = useCallback(async () => {
     try {
       const authToken = token || localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/v1/bills/history', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const response = await fetch(
+        `http://localhost:5000/api/v1/bills/history?date=${selectedDate}`,
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+
       const data = await response.json();
       if (response.ok) {
         setPaymentHistory(data.data || []);
@@ -122,21 +128,33 @@ const AwaitingBilling = () => {
     } catch (err) {
       console.error('Failed to load payment history:', err);
     }
-  }, [token]);
+  }, [token, selectedDate]);
 
+  // Initial Load
   useEffect(() => {
     fetchAwaitingBills();
-    fetchPaymentHistory();
     fetchNotifications();
+  }, [fetchAwaitingBills, fetchNotifications]);
 
+  // Tab or Date Change Effect
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchPaymentHistory();
+    }
+  }, [activeTab, selectedDate, fetchPaymentHistory]);
+
+  // Polling Interval (8s)
+  useEffect(() => {
     const interval = setInterval(() => {
       fetchAwaitingBills();
       fetchNotifications();
-      if (activeTab === 'history') fetchPaymentHistory();
+      if (activeTab === 'history') {
+        fetchPaymentHistory();
+      }
     }, 8000);
 
     return () => clearInterval(interval);
-  }, [fetchAwaitingBills, fetchPaymentHistory, fetchNotifications, activeTab]);
+  }, [fetchAwaitingBills, fetchNotifications, fetchPaymentHistory, activeTab]);
 
   const handleSelectTable = (table) => {
     setSelectedTable(table);
@@ -148,6 +166,11 @@ const AwaitingBilling = () => {
     fetchPaymentHistory();
   };
 
+  const dailyTotalCollected = paymentHistory.reduce(
+    (sum, item) => sum + parseFloat(item.total_amount || 0),
+    0
+  );
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-16">
@@ -158,20 +181,12 @@ const AwaitingBilling = () => {
   }
 
   return (
-    <div onClick={handleUnlockAudio} className="space-y-6 p-4 max-w-7xl mx-auto">
-      {/* Sound enable prompt banner if browser blocks audio initially */}
-      {!audioUnlocked && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded-lg text-xs flex justify-between items-center">
-          <span>🔊 Click anywhere on the screen once to enable sound notifications for incoming bills.</span>
-          <button onClick={handleUnlockAudio} className="font-bold underline text-amber-900">Enable Sound</button>
-        </div>
-      )}
-
+    <div className="space-y-6 p-4 max-w-7xl mx-auto">
       {/* Navigation Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 gap-4">
         <div>
           <h2 className="text-xl font-black text-gray-900 tracking-tight">Cashier Workstation</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Manage guest billing, register shifts, and settlement history</p>
+          <p className="text-xs text-gray-500 mt-0.5">Manage guest billing, register shifts, and daily payment history</p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
@@ -189,30 +204,21 @@ const AwaitingBilling = () => {
               )}
             </button>
 
-            {/* Notification Dropdown */}
             {showNotifDropdown && (
               <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3 space-y-2">
                 <div className="flex justify-between items-center pb-2 border-b border-gray-100">
                   <span className="font-bold text-xs text-gray-800">Bill Requests & Alerts</span>
-                  <button
-                    onClick={() => setShowNotifDropdown(false)}
-                    className="text-gray-400 hover:text-gray-600 text-xs font-bold"
-                  >
+                  <button onClick={() => setShowNotifDropdown(false)} className="text-gray-400 hover:text-gray-600 text-xs font-bold">
                     ✕
                   </button>
                 </div>
 
                 {notifications.length === 0 ? (
-                  <div className="text-center py-4 text-xs text-gray-400">
-                    No active alerts right now
-                  </div>
+                  <div className="text-center py-4 text-xs text-gray-400">No active alerts right now</div>
                 ) : (
                   <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar">
                     {notifications.map((n) => (
-                      <div
-                        key={n.notification_id || n.id}
-                        className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex flex-col gap-2"
-                      >
+                      <div key={n.notification_id || n.id} className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex flex-col gap-2">
                         <span className="text-xs font-semibold text-gray-800">{n.message}</span>
                         <button
                           onClick={() => {
@@ -312,11 +318,7 @@ const AwaitingBilling = () => {
 
           <div className="lg:col-span-7">
             {selectedTable ? (
-              <PaymentCheckout
-                table={selectedTable}
-                token={token}
-                onPaymentSuccess={handlePaymentSuccess}
-              />
+              <PaymentCheckout table={selectedTable} token={token} onPaymentSuccess={handlePaymentSuccess} />
             ) : (
               <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-16 text-center text-gray-400 text-xs">
                 👈 Select a table from the left to open settlement checkout.
@@ -326,61 +328,118 @@ const AwaitingBilling = () => {
         </div>
       )}
 
-      {/* Payment History View */}
+      {/* History View */}
       {activeTab === 'history' && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-            <h3 className="font-bold text-gray-900 text-sm">Recent Paid Settlements</h3>
-            <button onClick={fetchPaymentHistory} className="text-xs font-bold text-emerald-700 hover:underline">
-              🔄 Refresh History
-            </button>
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="font-black text-gray-900 text-base">Payment History</h3>
+              <p className="text-xs text-gray-500">Confirmed settlements recorded by cashiers</p>
+            </div>
+
+            <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-lg border border-gray-200 w-full sm:w-auto justify-between sm:justify-start">
+              <label htmlFor="calendar-picker" className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                📅 Date:
+              </label>
+              <input
+                id="calendar-picker"
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="bg-white border border-gray-300 text-gray-900 text-xs font-bold rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button
+                onClick={fetchPaymentHistory}
+                className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-md hover:bg-emerald-700 transition"
+              >
+                Filter
+              </button>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 font-bold">
-                  <th className="p-3">Order #</th>
-                  <th className="p-3">Table</th>
-                  <th className="p-3">Method</th>
-                  <th className="p-3">Total Paid</th>
-                  <th className="p-3">Fiscal #</th>
-                  <th className="p-3">Paid At</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paymentHistory.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="p-6 text-center text-gray-400">
-                      No historical transactions found.
-                    </td>
+
+          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex justify-between items-center">
+            <div>
+              <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide">
+                Total Money Collected ({selectedDate})
+              </span>
+              <div className="text-2xl font-black font-mono text-emerald-700 mt-0.5">
+                {dailyTotalCollected.toFixed(2)} ETB
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-bold text-emerald-800">
+                Total Transactions: {paymentHistory.length}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-bold">
+                    <th className="p-3">Table</th>
+                    <th className="p-3">Order #</th>
+                    <th className="p-3">Waiter</th>
+                    <th className="p-3">Cashier</th>
+                    <th className="p-3">Method</th>
+                    <th className="p-3">Receipt / Ref</th>
+                    <th className="p-3">Money Collected</th>
+                    <th className="p-3">Time</th>
                   </tr>
-                ) : (
-                  paymentHistory.map((item) => (
-                    <tr key={item.order_id} className="hover:bg-gray-50/50 transition">
-                      <td className="p-3 font-mono font-bold text-gray-800">#{item.order_id}</td>
-                      <td className="p-3 font-semibold">Table #{item.table_number}</td>
-                      <td className="p-3">
-                        <span className="px-2 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-bold">
-                          {item.payment_method}
-                        </span>
-                      </td>
-                      <td className="p-3 font-mono font-bold text-emerald-700">
-                        {parseFloat(item.total_amount).toFixed(2)} ETB
-                      </td>
-                      <td className="p-3 font-mono text-gray-600">{item.fiscal_receipt_no || 'N/A'}</td>
-                      <td className="p-3 text-gray-500">
-                        {new Date(item.paid_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {paymentHistory.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" className="p-12 text-center text-gray-400 font-medium">
+                        No payments found for {selectedDate}. Pick another date using the calendar above.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    paymentHistory.map((item, index) => (
+                      <tr key={index} className="hover:bg-gray-50/80 transition">
+                        <td className="p-3 font-black text-gray-900 text-sm">
+                          Table #{item.table_number}
+                        </td>
+                        <td className="p-3 font-mono font-bold text-blue-700">
+                          {item.aggregated_order_ids || `#${item.order_id}`}
+                        </td>
+                        <td className="p-3 text-gray-700 font-medium">
+                          {item.waiter_name || 'N/A'}
+                        </td>
+                        <td className="p-3 text-gray-700 font-medium">
+                          {item.cashier_name || 'N/A'}
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 bg-gray-100 border border-gray-300 rounded text-[10px] font-bold uppercase text-gray-800">
+                            {item.payment_method}
+                          </span>
+                        </td>
+                        <td className="p-3 font-mono text-gray-600 text-[11px]">
+                          {item.fiscal_receipt_no || item.payment_ref || 'N/A'}
+                        </td>
+                        <td className="p-3 font-mono font-black text-emerald-700 text-sm">
+                          {parseFloat(item.total_amount || 0).toFixed(2)} ETB
+                        </td>
+                        <td className="p-3 text-gray-500 font-medium">
+                          {item.paid_at
+                            ? new Date(item.paid_at).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : 'N/A'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Shift Register View */}
+      {/* Shift View */}
       {activeTab === 'shift' && (
         <div className="max-w-md mx-auto">
           <ShiftManager onShiftChange={fetchAwaitingBills} />

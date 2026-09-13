@@ -4,22 +4,31 @@ import StaffManagement from './StaffManagement';
 import MenuManagement from './MenuManagement';
 import TableConfig from './TableConfig';
 import Reports from './Reports';
-import DiscountApprovals from './DiscountApprovals';
 import AuditLogs from './AuditLogs';
+import ShiftControl from './ShiftControl';
 
 const DashboardOverview = () => {
   const { user, logoutUser } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('staff');
 
-  // Check if current logged-in user has the Owner role
-  const isOwner = user?.roles?.includes('Owner');
+  // Safely parse user roles (handles Postgres "{Role}" strings & JS Arrays)
+  const getUserRoles = (roles) => {
+    if (!roles) return [];
+    if (Array.isArray(roles)) return roles;
+    if (typeof roles === 'string') {
+      return roles.replace(/[{}"\s]/g, '').split(',');
+    }
+    return [];
+  };
 
-  // Dynamically filter tabs based on role
+  const userRoles = getUserRoles(user?.roles);
+  const isOwner = userRoles.includes('Owner');
+
   const tabs = [
     { id: 'staff', label: '👥 Staff Roster' },
     { id: 'menu', label: '🍽️ Menu Management' },
     { id: 'tables', label: '🪑 Floor Plan & Tables' },
-    { id: 'discounts', label: '🏷️ Discount Requests' },
+    { id: 'shifts', label: '💵 Register & Shifts' },
     { id: 'reports', label: '📊 Sales & Analytics' },
     ...(isOwner ? [{ id: 'audit', label: '🛡️ Audit Trail' }] : []),
   ];
@@ -34,16 +43,16 @@ const DashboardOverview = () => {
               {isOwner ? '👑 Owner Workspace' : '💼 Manager Workspace'}
             </h1>
             <p className="text-sm text-gray-500">
-              Logged in as <span className="font-semibold text-gray-700">{user?.full_name}</span>
+              Logged in as <span className="font-semibold text-gray-700">{user?.full_name || user?.username}</span>
             </p>
           </div>
+
           <button
             onClick={logoutUser}
             className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition font-medium text-sm"
           >
             Logout
           </button>
-          </div>
         </div>
 
         {/* Tab Navigation Menu */}
@@ -68,11 +77,12 @@ const DashboardOverview = () => {
           {activeTab === 'staff' && <StaffManagement />}
           {activeTab === 'menu' && <MenuManagement />}
           {activeTab === 'tables' && <TableConfig />}
-          {activeTab === 'discounts' && <DiscountApprovals />}
+          {activeTab === 'shifts' && <ShiftControl />}
           {activeTab === 'reports' && <Reports />}
           {activeTab === 'audit' && isOwner && <AuditLogs />}
         </div>
       </div>
+    </div>
   );
 };
 

@@ -95,27 +95,34 @@ const StaffManagement = () => {
   };
 
   // Handler to toggle user status
-  const handleToggleStatus = async (staffId, currentStatus) => {
-    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+ // Handler to toggle user status smoothly
+const handleToggleStatus = async (staffId, currentStatus) => {
+  const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
 
-    try {
-      const response = await fetch(`http://localhost:5000/api/v1/staff/${staffId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token || localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
+  try {
+    const response = await fetch(`http://localhost:5000/api/v1/staff/${staffId}/status`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token || localStorage.getItem('token')}`,
+      },
+      body: JSON.stringify({ status: newStatus }),
+    });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to update status');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to update status');
 
-      fetchStaff();
-    } catch (err) {
-      alert(`❌ Error: ${err.message}`);
-    }
-  };
+    // Instantly update UI roster state locally
+    setStaffList((prevList) =>
+      prevList.map((item) =>
+        item.staff_id === staffId ? { ...item, status: newStatus } : item
+      )
+    );
+    setSuccess(`Status updated to ${newStatus}.`);
+  } catch (err) {
+    alert(`❌ Error: ${err.message}`);
+  }
+};
 
   // Handler to delete staff user
   const handleDeleteStaff = async (staffId, fullName) => {

@@ -12,7 +12,6 @@ const PaymentCheckout = ({ table, token, onPaymentSuccess }) => {
   const rawSubtotal = parseFloat(table.total_subtotal || table.subtotal || 0);
   const rawService = parseFloat(table.total_service_charge || table.service_charge || 0);
   const rawVat = parseFloat(table.total_vat || table.vat_amount || 0);
-  const rawDiscount = parseFloat(table.total_discount || table.discount_amount || 0);
   const finalPayable = parseFloat(table.group_total_amount || table.total_amount || 0);
 
   const cashGiven = parseFloat(cashReceived) || 0;
@@ -115,12 +114,6 @@ const PaymentCheckout = ({ table, token, onPaymentSuccess }) => {
           <span>VAT (15%):</span>
           <span className="font-mono">{rawVat.toFixed(2)} ETB</span>
         </div>
-        {rawDiscount > 0 && (
-          <div className="flex justify-between text-emerald-700 font-bold">
-            <span>Approved Manager Discount:</span>
-            <span className="font-mono">-{rawDiscount.toFixed(2)} ETB</span>
-          </div>
-        )}
         <div className="flex justify-between text-sm font-black text-gray-900 pt-2 border-t border-gray-200">
           <span>Final Total Payable:</span>
           <span className="text-emerald-700 font-mono text-base">{finalPayable.toFixed(2)} ETB</span>
@@ -139,7 +132,6 @@ const PaymentCheckout = ({ table, token, onPaymentSuccess }) => {
             <option value="Cash">Cash</option>
             <option value="Telebirr">Telebirr</option>
             <option value="CBE_Birr">CBE Birr</option>
-            <option value="Card">Card / POS</option>
           </select>
         </div>
 

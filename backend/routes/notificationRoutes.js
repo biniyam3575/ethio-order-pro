@@ -1,14 +1,10 @@
 const express = require('express');
-
 const router = express.Router();
+const { authenticateToken } = require('../middleware/auth');
 const {
-  authenticateToken,
-} = require('../middleware/auth');
-
-const {
-    getUnreadNotifications,
-    markNotificationAsRead,
-} = require('../controllers/notificationController')
+  getUnreadNotifications,
+  markNotificationAsRead,
+} = require('../controllers/notificationController');
 
 /*
  * Get unread notifications
@@ -18,7 +14,6 @@ router.get(
   authenticateToken,
   getUnreadNotifications
 );
-
 
 /*
  * Mark a notification as read
