@@ -1,30 +1,135 @@
-import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  useCallback,
+  useRef,
+} from 'react';
 import TicketQueue from './TicketQueue';
 import InventoryToggle from './InverntoryToggle';
 import { AuthContext } from '../../context/AuthContext';
 
+const Icon = ({ name, size = 18 }) => {
+  const common = {
+    width: size,
+    height: size,
+    fill: 'none',
+    viewBox: '0 0 24 24',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  };
+
+  const paths = {
+    bell: (
+      <>
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+        <path d="M10 21h4" />
+      </>
+    ),
+
+    list: (
+      <>
+        <path d="M8 6h13M8 12h13M8 18h13" />
+        <path d="M3 6h.01M3 12h.01M3 18h.01" />
+      </>
+    ),
+
+    box: (
+      <>
+        <path d="M21 8l-9-5-9 5 9 5 9-5z" />
+        <path d="M3 8v8l9 5 9-5V8" />
+        <path d="M12 13v8" />
+      </>
+    ),
+
+    refresh: (
+      <>
+        <path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4" />
+        <path d="M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4" />
+      </>
+    ),
+
+    close: (
+      <>
+        <path d="M6 6l12 12M18 6L6 18" />
+      </>
+    ),
+
+    check: (
+      <>
+        <path d="M5 12l4 4L19 6" />
+      </>
+    ),
+
+    logout: (
+      <>
+        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 014-2h4" />
+        <path d="M16 17l5-5-5-5" />
+        <path d="M21 12H9" />
+      </>
+    ),
+  };
+
+  return <svg {...common}>{paths[name]}</svg>;
+};
+
 const HotDrinksView = () => {
-  const { token } = useContext(AuthContext);
+  const { token, logoutUser } = useContext(AuthContext);
+
   const [activeTab, setActiveTab] = useState('queue');
   const [tickets, setTickets] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Notifications State
+  // Notifications
   const [notifications, setNotifications] = useState([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
   const audioRef = useRef(null);
+  const audioUnlockedRef = useRef(false);
   const previousNotificationIdsRef = useRef(new Set());
   const isFirstFetchRef = useRef(true);
 
-  // Initialize Audio Object
+  // ------------------------------------------------------------
+  // Notification audio
+  // ------------------------------------------------------------
+
   useEffect(() => {
-    audioRef.current = new Audio('/notification.mp3');
-    audioRef.current.load();
+    const audio = new Audio('/notification.mp3');
+
+    audio.preload = 'auto';
+    audioRef.current = audio;
+
+    const unlockAudio = async () => {
+      if (!audioRef.current || audioUnlockedRef.current) return;
+
+      try {
+        audioRef.current.currentTime = 0;
+
+        await audioRef.current.play();
+
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+
+        audioUnlockedRef.current = true;
+
+        console.log('Hot Drinks notification audio unlocked.');
+      } catch (err) {
+        console.warn(
+          'Hot Drinks audio unlock failed:',
+          err
+        );
+      }
+    };
+
+    window.addEventListener('click', unlockAudio);
 
     return () => {
+      window.removeEventListener('click', unlockAudio);
+
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
@@ -32,88 +137,197 @@ const HotDrinksView = () => {
     };
   }, []);
 
-  const playNotificationSound = useCallback(() => {
-    if (!audioRef.current) return;
+  const playNotificationSound = () => {
+    if (!audioRef.current) {
+      console.warn('Hot Drinks: audioRef is null.');
+      return;
+    }
+
+    console.log(
+      'Hot Drinks: attempting to play notification sound.'
+    );
 
     audioRef.current.currentTime = 0;
+
     audioRef.current.play().catch((err) => {
-      console.warn('Audio playback blocked until user interacts with document:', err);
+      console.error(
+        'Hot Drinks notification sound failed:',
+        err
+      );
     });
-  }, []);
+  };
 
   const handleUnlockAudio = useCallback(() => {
     if (!audioRef.current) return;
 
-    audioRef.current.play().then(() => {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }).catch(() => {});
+    audioRef.current
+      .play()
+      .then(() => {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      })
+      .catch(() => {});
   }, []);
 
-  // Fetch Notifications with station parameter
+  // ------------------------------------------------------------
+  // Fetch notifications
+  // ------------------------------------------------------------
+
   const fetchNotifications = useCallback(async () => {
     try {
-      const authToken = token || localStorage.getItem('token');
+      const authToken =
+        token || localStorage.getItem('token');
+
       if (!authToken) return;
 
       const response = await fetch(
         'http://localhost:5000/api/v1/orders/notifications?station=Hot%20Drinks',
         {
-          headers: { Authorization: `Bearer ${authToken}` },
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
         }
       );
 
       const json = await response.json();
-      if (!response.ok) throw new Error(json.message || 'Failed to fetch notifications.');
 
-      const fetchedData = json.data || (Array.isArray(json) ? json : []);
+      if (!response.ok) {
+        throw new Error(
+          json.message ||
+            'Failed to fetch notifications.'
+        );
+      }
+
+      const fetchedData =
+        json.data ||
+        (Array.isArray(json) ? json : []);
 
       const currentNotificationIds = new Set(
-        fetchedData.map((notif) => String(notif.notification_id || notif.id))
+        fetchedData.map((notif) =>
+          String(
+            notif.notification_id ||
+              notif.id
+          )
+        )
       );
 
-      const previousIds = previousNotificationIdsRef.current;
+      const previousIds =
+        previousNotificationIdsRef.current;
 
-      const hasNewNotification = fetchedData.some((notif) => {
-        const id = String(notif.notification_id || notif.id);
-        return !previousIds.has(id);
-      });
+      const hasNewNotification =
+        fetchedData.some((notif) => {
+          const id = String(
+            notif.notification_id ||
+              notif.id
+          );
 
-      if (hasNewNotification && !isFirstFetchRef.current) {
+          return !previousIds.has(id);
+        });
+
+      if (
+        hasNewNotification &&
+        !isFirstFetchRef.current
+      ) {
         playNotificationSound();
       }
 
       isFirstFetchRef.current = false;
-      previousNotificationIdsRef.current = currentNotificationIds;
+
+      previousNotificationIdsRef.current =
+        currentNotificationIds;
+
       setNotifications(fetchedData);
     } catch (err) {
-      console.error('Failed to fetch hot drink notifications:', err);
+      console.error(
+        'Failed to fetch hot drink notifications:',
+        err
+      );
     }
   }, [token, playNotificationSound]);
 
-  // Fetch Station Tickets and Menu Data using "Hot Drinks"
+  // ------------------------------------------------------------
+  // Fetch Hot Drinks station data
+  // ------------------------------------------------------------
+
   const fetchStationData = useCallback(async () => {
     try {
-      const headers = { Authorization: `Bearer ${token || localStorage.getItem('token')}` };
+      setError('');
 
-      const [ticketsRes, menuRes] = await Promise.all([
-        fetch('http://localhost:5000/api/v1/orders/kitchen?station=Hot%20Drinks', { headers }),
-        fetch('http://localhost:5000/api/v1/menu', { headers }),
-      ]);
+      const authToken =
+        token || localStorage.getItem('token');
 
-      const ticketsJson = await ticketsRes.json();
-      const menuJson = await menuRes.json();
+      if (!authToken) return;
 
-      if (!ticketsRes.ok) throw new Error(ticketsJson.message || 'Failed to fetch tickets.');
+      const headers = {
+        Authorization: `Bearer ${authToken}`,
+      };
 
-      setTickets(Array.isArray(ticketsJson) ? ticketsJson : ticketsJson.data || []);
-      setMenuItems(Array.isArray(menuJson) ? menuJson : menuJson.data || []);
+      const [ticketsRes, menuRes] =
+        await Promise.all([
+          fetch(
+            'http://localhost:5000/api/v1/orders/kitchen?station=Hot%20Drinks',
+            {
+              headers,
+            }
+          ),
+
+          fetch(
+            'http://localhost:5000/api/v1/menu',
+            {
+              headers,
+            }
+          ),
+        ]);
+
+      const ticketsJson =
+        await ticketsRes.json();
+
+      const menuJson =
+        await menuRes.json();
+
+      if (!ticketsRes.ok) {
+        throw new Error(
+          ticketsJson.message ||
+            'Failed to fetch hot drinks orders.'
+        );
+      }
+
+      if (!menuRes.ok) {
+        throw new Error(
+          menuJson.message ||
+            'Failed to fetch menu items.'
+        );
+      }
+
+      setTickets(
+        Array.isArray(ticketsJson)
+          ? ticketsJson
+          : ticketsJson.data || []
+      );
+
+      setMenuItems(
+        Array.isArray(menuJson)
+          ? menuJson
+          : menuJson.data || []
+      );
     } catch (err) {
-      setError(err.message);
+      console.error(
+        'Failed to fetch hot drinks data:',
+        err
+      );
+
+      setError(
+        err.message ||
+          'Failed to load hot drinks data.'
+      );
     } finally {
       setLoading(false);
     }
   }, [token]);
+
+  // ------------------------------------------------------------
+  // LIVE POLLING
+  // ------------------------------------------------------------
 
   useEffect(() => {
     fetchStationData();
@@ -125,190 +339,580 @@ const HotDrinksView = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [fetchStationData, fetchNotifications]);
+  }, [
+    fetchStationData,
+    fetchNotifications,
+  ]);
 
-  const handleAcknowledgeNotification = async (notificationId) => {
+  // ------------------------------------------------------------
+  // Acknowledge notification
+  // ------------------------------------------------------------
+
+  const handleAcknowledgeNotification = async (
+    notificationId
+  ) => {
     try {
-      const authToken = token || localStorage.getItem('token');
+      const authToken =
+        token || localStorage.getItem('token');
 
       setNotifications((prev) =>
-        prev.filter((n) => String(n.notification_id || n.id) !== String(notificationId))
+        prev.filter(
+          (n) =>
+            String(
+              n.notification_id || n.id
+            ) !== String(notificationId)
+        )
       );
 
-      await fetch(`http://localhost:5000/api/v1/orders/notifications/${notificationId}/read`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      await fetch(
+        `http://localhost:5000/api/v1/orders/notifications/${notificationId}/read`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        }
+      );
 
-      fetchNotifications();
+      await fetchNotifications();
     } catch (err) {
-      console.error('Failed to dismiss notification:', err);
-      fetchNotifications();
+      console.error(
+        'Failed to dismiss notification:',
+        err
+      );
+
+      await fetchNotifications();
     }
   };
 
-  const handleUpdateItemStatus = async (orderItemId, newStatus) => {
+  // ------------------------------------------------------------
+  // Update order item status
+  // ------------------------------------------------------------
+
+  const handleUpdateItemStatus = async (
+    orderItemId,
+    newStatus
+  ) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/v1/orders/item/${orderItemId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token || localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const response = await fetch(
+        `http://localhost:5000/api/v1/orders/item/${orderItemId}/status`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type':
+              'application/json',
+            Authorization: `Bearer ${
+              token ||
+              localStorage.getItem('token')
+            }`,
+          },
+          body: JSON.stringify({
+            status: newStatus,
+          }),
+        }
+      );
+
+      const json = await response.json();
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to update item status');
+        throw new Error(
+          json.message ||
+            'Failed to update item status'
+        );
       }
 
       fetchStationData();
     } catch (err) {
-      setError(err.message);
+      console.error(
+        'Failed to update item status:',
+        err
+      );
+
+      setError(
+        err.message ||
+          'Failed to update item status.'
+      );
     }
   };
 
-  const handleToggleStock = async (itemId, isAvailable) => {
+  // ------------------------------------------------------------
+  // Toggle stock availability
+  // ------------------------------------------------------------
+
+  const handleToggleStock = async (
+    itemId,
+    isAvailable
+  ) => {
     try {
-      await fetch(`http://localhost:5000/api/v1/menu/${itemId}/availability`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token || localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({ isAvailable }),
-      });
+      const response = await fetch(
+        `http://localhost:5000/api/v1/menu/${itemId}/availability`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type':
+              'application/json',
+            Authorization: `Bearer ${
+              token ||
+              localStorage.getItem('token')
+            }`,
+          },
+          body: JSON.stringify({
+            isAvailable,
+          }),
+        }
+      );
+
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          json.message ||
+            'Failed to update item availability'
+        );
+      }
 
       fetchStationData();
     } catch (err) {
-      console.error('Failed to update stock:', err);
+      console.error(
+        'Failed to toggle stock:',
+        err
+      );
+
+      setError(
+        err.message ||
+          'Failed to update item availability.'
+      );
     }
   };
 
+  // ------------------------------------------------------------
+  // Navigation tabs
+  // ------------------------------------------------------------
+
+  const tabs = [
+    {
+      id: 'queue',
+      label: 'Order Queue',
+      icon: 'list',
+    },
+    {
+      id: 'inventory',
+      label: 'Inventory',
+      icon: 'box',
+    },
+  ];
+
+  // ------------------------------------------------------------
+  // Initial loading only
+  // ------------------------------------------------------------
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-12 bg-white rounded-xl shadow-sm border border-gray-200 max-w-7xl mx-auto">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
-        <span className="ml-3 text-gray-600 font-medium">Loading hot drinks station...</span>
+      <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 md:p-5">
+        <div className="border border-gray-200 bg-white rounded-xl p-8 text-center">
+          <p className="text-sm text-gray-500">
+            Loading hot drinks...
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div onClick={handleUnlockAudio} className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      {/* Header & Navigation Controls */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-            ☕ Hot Drinks Station
-          </h1>
-          <p className="text-xs text-gray-500 font-medium">Coffee & Tea Line • Preparation Queue</p>
-        </div>
+    <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 md:p-5">
 
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-          {/* Notification Bell Icon with Badge */}
-          <div className="relative w-full sm:w-auto">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowNotifDropdown((prev) => !prev);
-              }}
-              className="px-3 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition flex items-center justify-center gap-2 text-xs font-bold text-amber-900 shadow-sm w-full sm:w-auto"
-            >
-              🔔
-              {notifications.length > 0 && (
-                <span className="px-1.5 py-0.5 text-[10px] font-black bg-red-600 text-white rounded-full animate-pulse shadow-sm">
-                  {notifications.length}
-                </span>
-              )}
-            </button>
+      {/* HEADER */}
 
-            {showNotifDropdown && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3 space-y-2"
-              >
-                <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-                  <span className="font-bold text-xs text-gray-800">Hot Drinks Alerts</span>
-                  <button onClick={() => setShowNotifDropdown(false)} className="text-gray-400 hover:text-gray-600 text-xs font-bold">
-                    ✕
-                  </button>
-                </div>
+      <div className="bg-white border border-gray-200 rounded-xl overflow-visible">
 
-                {notifications.length === 0 ? (
-                  <div className="text-center py-4 text-xs text-gray-400">No active alerts right now</div>
-                ) : (
-                  <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar">
-                    {notifications.map((notification) => {
-                      const id = notification.notification_id || notification.id;
-                      return (
-                        <div key={id} className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex flex-col gap-2">
-                          <span className="text-xs font-semibold text-gray-800">{notification.message}</span>
-                          <button
-                            onClick={() => {
-                              handleAcknowledgeNotification(id);
-                              setShowNotifDropdown(false);
-                            }}
-                            className="self-end px-2.5 py-1 bg-amber-600 text-white text-[10px] font-bold rounded hover:bg-amber-700 transition"
+        <div className="p-3 sm:p-4">
+
+          {/* TITLE + NOTIFICATION + LOGOUT */}
+
+          <div className="relative flex items-start justify-between gap-3">
+
+            <div className="min-w-0 pr-12 sm:pr-0">
+
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight">
+                Hot Drinks Station
+              </h1>
+
+              <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                Coffee and tea preparation queue and inventory
+              </p>
+
+            </div>
+
+            {/* NOTIFICATION + LOGOUT */}
+
+            <div className="flex items-center gap-2 shrink-0">
+
+              {/* NOTIFICATION */}
+
+              <div className="relative">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowNotifDropdown(
+                      (prev) => !prev
+                    )
+                  }
+                  title="Notifications"
+                  className="
+                    relative
+                    w-10
+                    h-10
+                    sm:w-11
+                    sm:h-11
+                    flex
+                    items-center
+                    justify-center
+                    border
+                    border-gray-300
+                    bg-white
+                    text-gray-700
+                    hover:bg-gray-50
+                    hover:text-black
+                    rounded-lg
+                    cursor-pointer
+                    transition
+                  "
+                >
+                  <Icon name="bell" size={19} />
+
+                  {notifications.length > 0 && (
+                    <span
+                      className="
+                        absolute
+                        -top-1.5
+                        -right-1.5
+                        min-w-[18px]
+                        h-[18px]
+                        px-1
+                        flex
+                        items-center
+                        justify-center
+                        rounded-full
+                        bg-amber-500
+                        text-white
+                        text-[10px]
+                        font-bold
+                        border-2
+                        border-white
+                      "
+                    >
+                      {notifications.length > 9
+                        ? '9+'
+                        : notifications.length}
+                    </span>
+                  )}
+                </button>
+
+                {showNotifDropdown && (
+                  <div
+                    className="
+                      absolute
+                      right-0
+                      top-12
+                      w-[300px]
+                      max-w-[calc(100vw-24px)]
+                      bg-white
+                      border
+                      border-gray-200
+                      rounded-xl
+                      shadow-lg
+                      z-50
+                      overflow-hidden
+                    "
+                  >
+
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+
+                      <span className="text-sm font-semibold text-gray-900">
+                        Notifications
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowNotifDropdown(
+                            false
+                          )
+                        }
+                        title="Close"
+                        className="
+                          w-7
+                          h-7
+                          flex
+                          items-center
+                          justify-center
+                          text-gray-400
+                          hover:text-gray-700
+                          hover:bg-gray-100
+                          rounded-md
+                          cursor-pointer
+                          transition
+                        "
+                      >
+                        <Icon name="close" size={15} />
+                      </button>
+
+                    </div>
+
+                    {notifications.length === 0 ? (
+
+                      <div className="px-4 py-8 text-center text-xs text-gray-400">
+                        No new notifications
+                      </div>
+
+                    ) : (
+
+                      <div className="max-h-72 overflow-y-auto">
+
+                        {notifications.map((n) => (
+
+                          <div
+                            key={
+                              n.notification_id ||
+                              n.id
+                            }
+                            className="
+                              px-4
+                              py-3
+                              border-b
+                              border-gray-100
+                              last:border-0
+                            "
                           >
-                            ✓ Dismiss Alert
-                          </button>
-                        </div>
-                      );
-                    })}
+
+                            <div className="flex items-start gap-3">
+
+                              <div className="mt-0.5 text-amber-600 shrink-0">
+                                <Icon
+                                  name="bell"
+                                  size={16}
+                                />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+
+                                <p className="text-xs leading-5 text-gray-700">
+                                  {n.message}
+                                </p>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleAcknowledgeNotification(
+                                      n.notification_id ||
+                                        n.id
+                                    );
+
+                                    setShowNotifDropdown(
+                                      false
+                                    );
+                                  }}
+                                  className="
+                                    mt-2
+                                    inline-flex
+                                    items-center
+                                    justify-center
+                                    gap-1.5
+                                    px-3
+                                    py-1.5
+                                    bg-black
+                                    text-white
+                                    text-xs
+                                    font-semibold
+                                    rounded-md
+                                    cursor-pointer
+                                    hover:bg-gray-800
+                                    transition
+                                  "
+                                >
+                                  <Icon
+                                    name="check"
+                                    size={13}
+                                  />
+                                  Mark as Read
+                                </button>
+
+                              </div>
+
+                            </div>
+
+                          </div>
+
+                        ))}
+
+                      </div>
+
+                    )}
+
                   </div>
                 )}
+
               </div>
-            )}
+
+              {/* LOGOUT */}
+
+              <button
+                type="button"
+                onClick={logoutUser}
+                title="Logout"
+                aria-label="Logout"
+                className="
+                  w-10
+                  h-10
+                  sm:w-11
+                  sm:h-11
+                  flex
+                  items-center
+                  justify-center
+                  border
+                  border-gray-300
+                  bg-white
+                  text-gray-500
+                  hover:bg-red-50
+                  hover:text-red-600
+                  hover:border-red-200
+                  rounded-lg
+                  cursor-pointer
+                  transition
+                "
+              >
+                <Icon name="logout" size={18} />
+              </button>
+
+            </div>
+
           </div>
 
-          <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
-            <button
-              onClick={() => setActiveTab('queue')}
-              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition ${
-                activeTab === 'queue' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-              }`}
+          {/* NAVIGATION BUTTONS */}
+
+          <div className="mt-4 sm:mt-5">
+
+            <div
+              className="
+                grid
+                grid-cols-2
+                gap-2
+                sm:flex
+                sm:items-center
+                sm:gap-2
+              "
             >
-              📋 Coffee Queue ({tickets.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('inventory')}
-              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition ${
-                activeTab === 'inventory' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              📦 86 Inventory
-            </button>
-            <button
-              onClick={() => { fetchStationData(); fetchNotifications(); }}
-              className="px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg ml-2 transition"
-            >
-              🔄 Refresh
-            </button>
+
+              {tabs.map((tab) => {
+
+                const isActive =
+                  activeTab === tab.id;
+
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() =>
+                      setActiveTab(tab.id)
+                    }
+                    title={tab.label}
+                    className={`
+                      min-w-0
+                      min-h-[50px]
+                      sm:min-h-[48px]
+                      sm:px-5
+                      px-2
+                      py-2.5
+                      flex
+                      items-center
+                      justify-center
+                      gap-2
+                      rounded-lg
+                      border
+                      text-xs
+                      sm:text-sm
+                      font-semibold
+                      cursor-pointer
+                      transition
+                      whitespace-nowrap
+
+                      ${
+                        isActive
+                          ? `
+                            bg-black
+                            text-white
+                            border-black
+                            hover:bg-gray-800
+                          `
+                          : `
+                            bg-white
+                            text-gray-600
+                            border-gray-300
+                            hover:bg-gray-50
+                            hover:text-gray-900
+                          `
+                      }
+                    `}
+                  >
+
+                    <Icon
+                      name={tab.icon}
+                      size={18}
+                    />
+
+                    <span className="truncate">
+                      {tab.label}
+                    </span>
+
+                  </button>
+                );
+
+              })}
+
+            </div>
+
           </div>
+
         </div>
+
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-700 p-3 rounded-lg text-xs border border-red-200 flex justify-between items-center">
-          <span>{error}</span>
-          <button onClick={() => setError('')} className="font-bold">✕</button>
-        </div>
-      )}
+      {/* PAGE CONTENT */}
 
-      {activeTab === 'queue' ? (
-      <TicketQueue
-        tickets={tickets}
-        currentStation="Hot Drinks"
-        token={token}
-        onUpdateItemStatus={handleUpdateItemStatus}
-      />     ) : (
-        <InventoryToggle
-          menuItems={menuItems.filter((item) => item.station === 'Hot Drinks')}
-          onToggleStock={handleToggleStock}
-        />
-      )}
+      <div className="mt-3 sm:mt-4">
+
+        {error && (
+          <div className="mb-3 sm:mb-4 border border-red-200 bg-red-50 rounded-xl px-4 py-3 text-xs sm:text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {activeTab === 'queue' && (
+          <TicketQueue
+            tickets={tickets}
+            currentStation="Hot Drinks"
+            token={token}
+            onUpdateItemStatus={
+              handleUpdateItemStatus
+            }
+          />
+        )}
+
+        {activeTab === 'inventory' && (
+          <InventoryToggle
+            menuItems={menuItems.filter(
+              (item) =>
+                item.station === 'Hot Drinks'
+            )}
+            onToggleStock={
+              handleToggleStock
+            }
+          />
+        )}
+
+      </div>
+
     </div>
   );
 };

@@ -1,6 +1,60 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
+const Icon = ({ name, size = 18 }) => {
+  const common = {
+    width: size,
+    height: size,
+    fill: 'none',
+    viewBox: '0 0 24 24',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  };
+
+  const paths = {
+    check: (
+      <>
+        <path d="M5 12l4 4L19 6" />
+      </>
+    ),
+
+    trash: (
+      <>
+        <path d="M4 7h16" />
+        <path d="M10 11v6M14 11v6" />
+        <path d="M6 7l1 13h10l1-13" />
+        <path d="M9 7V4h6v3" />
+      </>
+    ),
+
+    play: (
+      <>
+        <path d="M8 5v14l11-7L8 5z" />
+      </>
+    ),
+
+    close: (
+      <>
+        <path d="M6 6l12 12M18 6L6 18" />
+      </>
+    ),
+
+    utensils: (
+      <>
+        <path d="M7 3v7" />
+        <path d="M4 3v4a3 3 0 0 0 6 0V3" />
+        <path d="M7 10v11" />
+        <path d="M16 3v18" />
+        <path d="M16 3c3 2 4 5 4 8h-4" />
+      </>
+    ),
+  };
+
+  return <svg {...common}>{paths[name]}</svg>;
+};
+
 const TicketQueue = ({
   tickets = [],
   currentStation = 'Kitchen',
@@ -34,7 +88,17 @@ const TicketQueue = ({
       return 'Cancelled';
     }
 
-    if (activeItems.every((item) => item.status === 'Ready')) {
+    if (activeItems.every((item) => item.status === 'Served')) {
+      return 'Served';
+    }
+
+    if (
+      activeItems.every(
+        (item) =>
+          item.status === 'Ready' ||
+          item.status === 'Served'
+      )
+    ) {
       return 'Ready';
     }
 
@@ -66,6 +130,7 @@ const TicketQueue = ({
 
     if (
       currentStatus === 'Ready' ||
+      currentStatus === 'Served' ||
       currentStatus === 'Cancelled'
     ) {
       return;
@@ -166,24 +231,34 @@ const TicketQueue = ({
       !dismissedTicketIds.includes(ticket.order_id)
   );
 
+  // ------------------------------------------------------------
+  // EMPTY STATE
+  // ------------------------------------------------------------
+
   if (visibleTickets.length === 0) {
     return (
-      <div className="bg-white p-12 text-center rounded-xl border border-gray-200 shadow-sm">
-        <div className="text-4xl mb-2">🍳</div>
+      <div className="bg-white border border-gray-200 rounded-xl p-8 sm:p-10 text-center">
+        <div className="mx-auto w-11 h-11 flex items-center justify-center border border-gray-200 rounded-lg text-gray-400 mb-3">
+          <Icon name="utensils" size={20} />
+        </div>
 
-        <h3 className="text-lg font-bold text-gray-800">
+        <h3 className="text-sm sm:text-base font-semibold text-gray-900">
           Display Queue Clear
         </h3>
 
-        <p className="text-xs text-gray-500">
+        <p className="text-xs sm:text-sm text-gray-500 mt-1">
           No active preparation tickets in the queue right now.
         </p>
       </div>
     );
   }
 
+  // ------------------------------------------------------------
+  // TICKET QUEUE
+  // ------------------------------------------------------------
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
       {visibleTickets.map((ticket, index) => {
         const items = ticket.items || [];
 
@@ -208,54 +283,83 @@ const TicketQueue = ({
         return (
           <div
             key={`${ticket.order_id}-${index}`}
-            className={`border rounded-xl p-4 flex flex-col justify-between shadow-sm transition-all ${
-              isCancelled
-                ? 'bg-red-50 border-red-300 ring-2 ring-red-200'
-                : isReady
-                ? 'bg-emerald-50 border-emerald-300'
-                : isPreparing
-                ? 'bg-blue-50 border-blue-200'
-                : 'bg-white border-gray-200'
-            }`}
+            className={`
+              bg-white
+              border
+              rounded-xl
+              overflow-hidden
+              flex
+              flex-col
+              transition
+              ${
+                isCancelled
+                  ? 'border-red-300'
+                  : isReady
+                  ? 'border-emerald-300'
+                  : isPreparing
+                  ? 'border-blue-200'
+                  : 'border-gray-200'
+              }
+            `}
           >
-            <div>
-              <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-                <div>
-                  <span className="font-black text-gray-900 text-lg block">
+            {/* ====================================================
+                TICKET HEADER
+            ==================================================== */}
+
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="block text-base font-bold text-gray-900">
                     Table #{ticket.table_number || 'N/A'}
                   </span>
 
-                  <span className="text-[10px] text-gray-500 font-semibold uppercase">
-                    Order #{ticket.order_id} •{' '}
+                  <span className="block mt-1 text-[10px] text-gray-500 font-semibold uppercase tracking-wide">
+                    Order #{ticket.order_id}
                     {ticket.created_at
-                      ? new Date(
+                      ? ` • ${new Date(
                           ticket.created_at
                         ).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
-                        })
+                        })}`
                       : ''}
                   </span>
                 </div>
 
                 <span
-                  className={`text-[9px] uppercase font-bold px-2.5 py-1 rounded-full ${
-                    isCancelled
-                      ? 'bg-red-200 text-red-900 animate-pulse'
-                      : isReady
-                      ? 'bg-emerald-200 text-emerald-800'
-                      : isPreparing
-                      ? 'bg-blue-200 text-blue-800'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}
+                  className={`
+                    shrink-0
+                    px-2.5
+                    py-1
+                    rounded-full
+                    text-[9px]
+                    uppercase
+                    font-bold
+                    border
+                    ${
+                      isCancelled
+                        ? 'bg-red-50 text-red-700 border-red-200'
+                        : isReady
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : isPreparing
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-gray-50 text-gray-600 border-gray-200'
+                    }
+                  `}
                 >
                   {isCancelled
-                    ? 'Order Cancelled'
+                    ? 'Cancelled'
                     : ticketStatus}
                 </span>
               </div>
+            </div>
 
-              <div className="my-4 space-y-2 overflow-y-auto max-h-64 pr-1">
+            {/* ====================================================
+                ITEMS
+            ==================================================== */}
+
+            <div className="p-4">
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {items.map((item) => {
                   const isItemCancelled =
                     item.status === 'Cancelled' ||
@@ -267,39 +371,53 @@ const TicketQueue = ({
                   return (
                     <div
                       key={itemId}
-                      className={`p-2.5 rounded-lg border flex flex-col gap-1 ${
-                        isItemCancelled
-                          ? 'bg-red-100/60 border-red-200 text-red-900'
-                          : item.status === 'Ready'
-                          ? 'bg-emerald-50 border-emerald-200 text-gray-800'
-                          : item.status === 'Preparing'
-                          ? 'bg-blue-50 border-blue-200 text-gray-800'
-                          : 'bg-gray-50 border-gray-200 text-gray-800'
-                      }`}
+                      className={`
+                        p-3
+                        rounded-lg
+                        border
+                        ${
+                          isItemCancelled
+                            ? 'bg-red-50 border-red-200'
+                            : 'bg-gray-50 border-gray-200'
+                        }
+                      `}
                     >
-                      <div className="flex justify-between items-start">
+                      <div className="flex items-start justify-between gap-2">
                         <span
-                          className={`text-sm font-bold block ${
-                            isItemCancelled
-                              ? 'line-through text-red-700 opacity-75'
-                              : 'text-gray-800'
-                          }`}
+                          className={`
+                            text-xs sm:text-sm
+                            font-semibold
+                            leading-5
+                            ${
+                              isItemCancelled
+                                ? 'line-through text-red-700'
+                                : 'text-gray-800'
+                            }
+                          `}
                         >
                           {item.quantity}x{' '}
-                          {item.name ||
-                            item.item_name}
+                          {item.name || item.item_name}
                         </span>
 
                         <span
-                          className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${
-                            isItemCancelled
-                              ? 'bg-red-200 text-red-800'
-                              : item.status === 'Ready'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : item.status === 'Preparing'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-gray-200 text-gray-700'
-                          }`}
+                          className={`
+                            shrink-0
+                            px-1.5
+                            py-0.5
+                            rounded
+                            text-[9px]
+                            uppercase
+                            font-bold
+                            ${
+                              isItemCancelled
+                                ? 'bg-red-100 text-red-700'
+                                : item.status === 'Ready'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : item.status === 'Preparing'
+                                ? 'bg-blue-50 text-blue-700'
+                                : 'bg-white text-gray-500 border border-gray-200'
+                            }
+                          `}
                         >
                           {isItemCancelled
                             ? 'Cancelled'
@@ -308,16 +426,16 @@ const TicketQueue = ({
                       </div>
 
                       {isItemCancelled ? (
-                        <span className="text-[11px] text-red-600 font-semibold italic">
-                          🚫 Cancelled:{' '}
+                        <p className="mt-1.5 text-[11px] text-red-600 font-medium">
+                          Cancelled:{' '}
                           {item.cancellation_reason ||
                             'Removed by staff'}
-                        </span>
+                        </p>
                       ) : (
                         item.note && (
-                          <span className="text-[11px] text-amber-600 italic font-medium">
+                          <p className="mt-1.5 text-[11px] text-gray-500 italic">
                             Note: {item.note}
-                          </span>
+                          </p>
                         )
                       )}
                     </div>
@@ -326,43 +444,184 @@ const TicketQueue = ({
               </div>
             </div>
 
-            {isCancelled || isReady ? (
-              <button
-                type="button"
-                onClick={() =>
-                  handleDismissTicket(
-                    ticket.order_id
-                  )
-                }
-                disabled={isUpdating}
-                className={`w-full py-2.5 text-xs font-extrabold rounded-lg text-white shadow-sm transition-all disabled:opacity-60 ${
-                  isCancelled
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-emerald-600 hover:bg-emerald-700'
-                }`}
-              >
-                🗑️ Clear Order
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() =>
-                  handleNextTicketStatus(ticket)
-                }
-                disabled={isUpdating}
-                className={`w-full py-2.5 text-xs font-extrabold rounded-lg text-white transition disabled:opacity-75 ${
-                  isPreparing
-                    ? 'bg-blue-600 hover:bg-blue-700'
-                    : 'bg-amber-500 hover:bg-amber-600'
-                }`}
-              >
-                {isUpdating
-                  ? 'Updating...'
-                  : isPreparing
-                  ? '🔔 Mark Ready'
-                  : '👨‍🍳 Start Preparing'}
-              </button>
-            )}
+            {/* ====================================================
+    ACTION
+==================================================== */}
+
+<div className="mt-auto p-4 pt-0">
+  {isCancelled ? (
+    <button
+      type="button"
+      onClick={() =>
+        handleDismissTicket(ticket.order_id)
+      }
+      disabled={isUpdating}
+      className="
+        w-full
+        min-h-[44px]
+        px-4
+        py-2.5
+        inline-flex
+        items-center
+        justify-center
+        gap-2
+        bg-red-50
+        text-red-600
+        border
+        border-red-200
+        text-xs
+        font-semibold
+        rounded-lg
+        hover:bg-red-100
+        disabled:opacity-50
+        disabled:cursor-not-allowed
+        cursor-pointer
+        transition
+      "
+    >
+      <Icon name="check" size={15} />
+      Clear Cancelled Order
+    </button>
+  ) : ticketStatus === 'Ready' ? (
+    <button
+      type="button"
+      onClick={() =>
+        handleDismissTicket(ticket.order_id)
+      }
+      disabled={isUpdating}
+      className="
+        w-full
+        min-h-[44px]
+        px-4
+        py-2.5
+        inline-flex
+        items-center
+        justify-center
+        gap-2
+        bg-green-50
+        text-green-700
+        border
+        border-green-200
+        text-xs
+        font-semibold
+        rounded-lg
+        hover:bg-green-100
+        disabled:opacity-50
+        disabled:cursor-not-allowed
+        cursor-pointer
+        transition
+      "
+    >
+      <Icon name="check" size={15} />
+      Clear Order
+    </button>
+  ) : ticketStatus === 'Served' ? (
+    <button
+      type="button"
+      onClick={() =>
+        handleDismissTicket(ticket.order_id)
+      }
+      disabled={isUpdating}
+      className="
+        w-full
+        min-h-[44px]
+        px-4
+        py-2.5
+        inline-flex
+        items-center
+        justify-center
+        gap-2
+        bg-gray-50
+        text-gray-600
+        border
+        border-gray-200
+        text-xs
+        font-semibold
+        rounded-lg
+        hover:bg-gray-100
+        disabled:opacity-50
+        disabled:cursor-not-allowed
+        cursor-pointer
+        transition
+      "
+    >
+      <Icon name="check" size={15} />
+      Clear Order
+    </button>
+  ) : isPreparing ? (
+    <button
+      type="button"
+      onClick={() =>
+        handleNextTicketStatus(ticket)
+      }
+      disabled={isUpdating}
+      className="
+        w-full
+        min-h-[44px]
+        px-4
+        py-2.5
+        inline-flex
+        items-center
+        justify-center
+        gap-2
+        bg-blue-50
+        text-blue-700
+        border
+        border-blue-200
+        text-xs
+        font-semibold
+        rounded-lg
+        hover:bg-blue-100
+        disabled:opacity-50
+        disabled:cursor-not-allowed
+        cursor-pointer
+        transition
+      "
+    >
+      <Icon name="check" size={15} />
+
+      {isUpdating
+        ? 'Updating...'
+        : 'Mark Ready'}
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={() =>
+        handleNextTicketStatus(ticket)
+      }
+      disabled={isUpdating}
+      className="
+        w-full
+        min-h-[44px]
+        px-4
+        py-2.5
+        inline-flex
+        items-center
+        justify-center
+        gap-2
+        bg-amber-50
+        text-amber-700
+        border
+        border-amber-200
+        text-xs
+        font-semibold
+        rounded-lg
+        hover:bg-amber-100
+        disabled:opacity-50
+        disabled:cursor-not-allowed
+        cursor-pointer
+        transition
+      "
+    >
+      <Icon name="play" size={15} />
+
+      {isUpdating
+        ? 'Updating...'
+        : 'Start Preparing'}
+    </button>
+  )}
+</div>
           </div>
         );
       })}

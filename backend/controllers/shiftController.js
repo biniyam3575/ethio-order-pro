@@ -5,96 +5,207 @@ const openShift = async (req, res) => {
   const cashierId = req.user.staff_id || req.user.user_id;
   const { opening_cash } = req.body;
 
+  if (!cashierId) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized: Cashier session required.'
+    });
+  }
+
   try {
-    const activeShift = await pool.query(
-      `SELECT shift_id FROM cashier_shifts WHERE cashier_id = $1 AND status = 'Open';`,
-      [cashierId]
+    /*
+     * Only ONE cashier shift can be active at a time.
+     *
+     * This matches the billing workflow where requestBill()
+     * sends the bill to the currently active cashier.
+     */
+
+    const anyActiveShift = await pool.query(
+      `
+      SELECT
+        cs.shift_id,
+        cs.cashier_id,
+        s.full_name AS cashier_name
+      FROM cashier_shifts cs
+      JOIN staff s ON cs.cashier_id = s.staff_id
+      WHERE cs.status = 'Open'
+      ORDER BY cs.opening_time DESC
+      LIMIT 1;
+      `
     );
 
-    if (activeShift.rows.length > 0) {
-      return res.status(400).json({ message: 'You already have an active open shift.' });
+    if (anyActiveShift.rows.length > 0) {
+      const activeShift = anyActiveShift.rows[0];
+
+      if (Number(activeShift.cashier_id) === Number(cashierId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'You already have an active open shift.'
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message: `Another cashier (${activeShift.cashier_name}) already has an active shift. Close that shift before opening a new one.`
+      });
     }
 
     const startCash = parseFloat(opening_cash) || 0.00;
 
     const insertQuery = `
-      INSERT INTO cashier_shifts (cashier_id, status, opening_cash, expected_cash)
-      VALUES ($1, 'Open', $2, $2)
+      INSERT INTO cashier_shifts
+        (cashier_id, status, opening_cash, expected_cash)
+      VALUES
+        ($1, 'Open', $2, $2)
       RETURNING *;
     `;
 
-    const { rows } = await pool.query(insertQuery, [cashierId, startCash]);
-    return res.status(201).json({ success: true, message: 'Shift opened successfully.', data: rows[0] });
+    const { rows } = await pool.query(insertQuery, [
+      cashierId,
+      startCash
+    ]);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Shift opened successfully.',
+      data: rows[0]
+    });
+
   } catch (error) {
     console.error('Open Shift Error:', error);
-    return res.status(500).json({ message: 'Failed to open shift.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to open shift.'
+    });
   }
 };
+
 
 // POST /api/v1/shifts/close - Close active cashier shift
 const closeShift = async (req, res) => {
   const cashierId = req.user.staff_id || req.user.user_id;
   const { actual_cash } = req.body;
 
+  if (!cashierId) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized: Cashier session required.'
+    });
+  }
+
   try {
     const shiftRes = await pool.query(
-      `SELECT * FROM cashier_shifts WHERE cashier_id = $1 AND status = 'Open';`,
+      `
+      SELECT *
+      FROM cashier_shifts
+      WHERE cashier_id = $1
+        AND status = 'Open'
+      FOR UPDATE;
+      `,
       [cashierId]
     );
 
     if (shiftRes.rows.length === 0) {
-      return res.status(404).json({ message: 'No open shift found for this cashier.' });
+      return res.status(404).json({
+        success: false,
+        message: 'No open shift found for this cashier.'
+      });
     }
 
     const shift = shiftRes.rows[0];
+
     const actual = parseFloat(actual_cash) || 0.00;
     const expected = parseFloat(shift.expected_cash || 0.00);
     const difference = actual - expected;
 
     const closeQuery = `
       UPDATE cashier_shifts
-      SET status = 'Closed',
-          closing_time = CURRENT_TIMESTAMP,
-          actual_cash = $1,
-          cash_difference = $2
+      SET
+        status = 'Closed',
+        closing_time = CURRENT_TIMESTAMP,
+        actual_cash = $1,
+        cash_difference = $2
       WHERE shift_id = $3
       RETURNING *;
     `;
 
-    const { rows } = await pool.query(closeQuery, [actual, difference, shift.shift_id]);
-    return res.status(200).json({ success: true, message: 'Shift closed successfully.', data: rows[0] });
+    const { rows } = await pool.query(closeQuery, [
+      actual,
+      difference,
+      shift.shift_id
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Shift closed successfully.',
+      data: rows[0]
+    });
+
   } catch (error) {
     console.error('Close Shift Error:', error);
-    return res.status(500).json({ message: 'Failed to close shift.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to close shift.'
+    });
   }
 };
+
 
 // GET /api/v1/shifts/current - Get current shift status for logged-in cashier
 const getCurrentShift = async (req, res) => {
   const cashierId = req.user.staff_id || req.user.user_id;
 
+  if (!cashierId) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized: Cashier session required.'
+    });
+  }
+
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM cashier_shifts WHERE cashier_id = $1 AND status = 'Open' LIMIT 1;`,
+      `
+      SELECT *
+      FROM cashier_shifts
+      WHERE cashier_id = $1
+        AND status = 'Open'
+      LIMIT 1;
+      `,
       [cashierId]
     );
 
     if (rows.length === 0) {
-      return res.status(200).json({ success: true, active: false, data: null });
+      return res.status(200).json({
+        success: true,
+        active: false,
+        data: null
+      });
     }
 
-    return res.status(200).json({ success: true, active: true, data: rows[0] });
+    return res.status(200).json({
+      success: true,
+      active: true,
+      data: rows[0]
+    });
+
   } catch (error) {
     console.error('Get Current Shift Error:', error);
-    return res.status(500).json({ message: 'Failed to retrieve current shift.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve current shift.'
+    });
   }
 };
+
 
 // GET /api/v1/shifts/active-all - All active open register shifts (Manager / Owner)
 const getActiveShifts = async (req, res) => {
   try {
     const query = `
-      SELECT 
+      SELECT
         cs.*,
         s.full_name AS cashier_name
       FROM cashier_shifts cs
@@ -102,19 +213,30 @@ const getActiveShifts = async (req, res) => {
       WHERE cs.status = 'Open'
       ORDER BY cs.opening_time DESC;
     `;
+
     const { rows } = await pool.query(query);
-    return res.status(200).json({ success: true, data: rows });
+
+    return res.status(200).json({
+      success: true,
+      data: rows
+    });
+
   } catch (error) {
     console.error('Get Active Shifts Error:', error);
-    return res.status(500).json({ message: 'Failed to fetch active shifts.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch active shifts.'
+    });
   }
 };
+
 
 // GET /api/v1/shifts/history - Closed shift historical logs (Manager / Owner)
 const getAllShifts = async (req, res) => {
   try {
     const query = `
-      SELECT 
+      SELECT
         cs.*,
         s.full_name AS cashier_name
       FROM cashier_shifts cs
@@ -122,41 +244,67 @@ const getAllShifts = async (req, res) => {
       WHERE cs.status = 'Closed'
       ORDER BY cs.closing_time DESC;
     `;
+
     const { rows } = await pool.query(query);
-    return res.status(200).json({ success: true, data: rows });
+
+    return res.status(200).json({
+      success: true,
+      data: rows
+    });
+
   } catch (error) {
     console.error('Get All Shifts Error:', error);
-    return res.status(500).json({ message: 'Failed to fetch shift history.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch shift history.'
+    });
   }
 };
 
-// POST /api/v1/shifts/force-close/:shiftId - Emergency override close shift (Manager / Owner)
+
+// POST /api/v1/shifts/force-close/:shiftId - Emergency override close shift
 const forceCloseShift = async (req, res) => {
   const { shiftId } = req.params;
 
   try {
     const closeQuery = `
       UPDATE cashier_shifts
-      SET status = 'Closed',
-          closing_time = CURRENT_TIMESTAMP,
-          actual_cash = expected_cash,
-          cash_difference = 0.00
-      WHERE shift_id = $1 AND status = 'Open'
+      SET
+        status = 'Closed',
+        closing_time = CURRENT_TIMESTAMP,
+        actual_cash = expected_cash,
+        cash_difference = 0.00
+      WHERE shift_id = $1
+        AND status = 'Open'
       RETURNING *;
     `;
 
     const { rows } = await pool.query(closeQuery, [shiftId]);
 
     if (rows.length === 0) {
-      return res.status(404).json({ message: 'Active shift not found or already closed.' });
+      return res.status(404).json({
+        success: false,
+        message: 'Active shift not found or already closed.'
+      });
     }
 
-    return res.status(200).json({ success: true, message: 'Shift force closed by management.', data: rows[0] });
+    return res.status(200).json({
+      success: true,
+      message: 'Shift force closed by management.',
+      data: rows[0]
+    });
+
   } catch (error) {
     console.error('Force Close Shift Error:', error);
-    return res.status(500).json({ message: 'Failed to force close shift.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to force close shift.'
+    });
   }
 };
+
 
 module.exports = {
   openShift,
@@ -164,5 +312,5 @@ module.exports = {
   getCurrentShift,
   getActiveShifts,
   getAllShifts,
-  forceCloseShift,
+  forceCloseShift
 };
