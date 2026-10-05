@@ -63,7 +63,7 @@ const StaffManagement = () => {
     try {
       setError('');
 
-      const response = await fetch('http://localhost:5000/api/v1/staff', {
+      const response = await fetch('/api/v1/staff', {
         headers: {
           Authorization: `Bearer ${token || localStorage.getItem('token')}`,
         },
@@ -95,7 +95,7 @@ const StaffManagement = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/v1/staff', {
+      const response = await fetch('/api/v1/staff', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,7 +141,7 @@ const StaffManagement = () => {
       setSuccess('');
 
       const response = await fetch(
-        `http://localhost:5000/api/v1/staff/${staffId}/status`,
+        `/api/v1/staff/${staffId}/status`,
         {
           method: 'PUT',
           headers: {
@@ -184,7 +184,7 @@ const StaffManagement = () => {
       setSuccess('');
 
       const response = await fetch(
-        `http://localhost:5000/api/v1/staff/${staffId}`,
+        `/api/v1/staff/${staffId}`,
         {
           method: 'DELETE',
           headers: {

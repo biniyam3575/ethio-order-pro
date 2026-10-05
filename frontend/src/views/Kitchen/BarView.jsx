@@ -134,7 +134,7 @@ const BarView = () => {
   const fetchNotifications = async () => {
     try {
       const response = await fetch(
-        'http://localhost:5000/api/v1/orders/notifications?station=Bar',
+        '/api/v1/orders/notifications?station=Bar',
         {
           headers: {
             Authorization: `Bearer ${
@@ -177,7 +177,7 @@ const BarView = () => {
   const handleAcknowledgeNotification = async (notificationId) => {
     try {
       await fetch(
-        `http://localhost:5000/api/v1/orders/notifications/${notificationId}/read`,
+        `/api/v1/orders/notifications/${notificationId}/read`,
         {
           method: 'PUT',
           headers: {
@@ -211,12 +211,12 @@ const BarView = () => {
 
       const [ticketsRes, menuRes] = await Promise.all([
         fetch(
-          'http://localhost:5000/api/v1/orders/kitchen?station=Bar',
+          '/api/v1/orders/kitchen?station=Bar',
           { headers }
         ),
 
         fetch(
-          'http://localhost:5000/api/v1/menu',
+          '/api/v1/menu',
           { headers }
         ),
       ]);
@@ -281,7 +281,7 @@ const BarView = () => {
   ) => {
     try {
       const response = await fetch(
-        `http://localhost:5000/api/v1/orders/item/${orderItemId}/status`,
+        `/api/v1/orders/item/${orderItemId}/status`,
         {
           method: 'PUT',
           headers: {
@@ -324,7 +324,7 @@ const BarView = () => {
   ) => {
     try {
       const response = await fetch(
-        `http://localhost:5000/api/v1/menu/${itemId}/availability`,
+        `/api/v1/menu/${itemId}/availability`,
         {
           method: 'PUT',
           headers: {

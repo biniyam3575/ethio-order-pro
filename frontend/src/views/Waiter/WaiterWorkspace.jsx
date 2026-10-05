@@ -123,7 +123,7 @@ const WaiterWorkspace = () => {
   const fetchNotifications = async () => {
     try {
       const response = await fetch(
-        'http://localhost:5000/api/v1/orders/notifications',
+        '/api/v1/orders/notifications',
         {
           headers: {
             Authorization: `Bearer ${
@@ -166,7 +166,7 @@ const WaiterWorkspace = () => {
   const handleAcknowledgeNotification = async (notificationId) => {
     try {
       await fetch(
-        `http://localhost:5000/api/v1/orders/notifications/${notificationId}/read`,
+        `/api/v1/orders/notifications/${notificationId}/read`,
         {
           method: 'PUT',
           headers: {

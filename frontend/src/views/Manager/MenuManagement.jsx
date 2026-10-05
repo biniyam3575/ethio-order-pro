@@ -51,7 +51,7 @@ const MenuManagement = () => {
       setError('');
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/menu',
+        '/api/v1/menu',
         {
           headers: {
             Authorization: `Bearer ${
@@ -112,8 +112,8 @@ const MenuManagement = () => {
     const isEdit = Boolean(editingId);
 
     const url = isEdit
-      ? `http://localhost:5000/api/v1/menu/${editingId}`
-      : 'http://localhost:5000/api/v1/menu';
+      ? `/api/v1/menu/${editingId}`
+      : '/api/v1/menu';
 
     const method = isEdit ? 'PUT' : 'POST';
 
@@ -165,7 +165,7 @@ const MenuManagement = () => {
       setSuccess('');
 
       const response = await fetch(
-        `http://localhost:5000/api/v1/menu/${itemId}/availability`,
+        `/api/v1/menu/${itemId}/availability`,
         {
           method: 'PUT',
           headers: {
@@ -218,7 +218,7 @@ const MenuManagement = () => {
       setSuccess('');
 
       const response = await fetch(
-        `http://localhost:5000/api/v1/menu/${itemId}`,
+        `/api/v1/menu/${itemId}`,
         {
           method: 'DELETE',
           headers: {

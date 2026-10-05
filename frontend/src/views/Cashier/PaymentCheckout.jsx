@@ -191,7 +191,7 @@ const PaymentCheckout = ({
         token || localStorage.getItem('token');
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/bills/process-table-payment',
+        '/api/v1/bills/process-table-payment',
         {
           method: 'POST',
           headers: {

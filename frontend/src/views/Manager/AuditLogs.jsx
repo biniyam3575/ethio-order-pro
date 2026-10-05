@@ -179,7 +179,7 @@ const AuditLogs = () => {
       const queryString = params.toString();
 
       const response = await fetch(
-        `http://localhost:5000/api/v1/audit${
+        `/api/v1/audit${
           queryString ? `?${queryString}` : ''
         }`,
         {

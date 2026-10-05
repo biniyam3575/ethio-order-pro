@@ -162,7 +162,7 @@ const ShiftManager = ({ onShiftChange }) => {
         token || localStorage.getItem('token');
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/shifts/current',
+        '/api/v1/shifts/current',
         {
           headers: {
             Authorization: `Bearer ${authToken}`,
@@ -214,7 +214,7 @@ const ShiftManager = ({ onShiftChange }) => {
         token || localStorage.getItem('token');
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/shifts/open',
+        '/api/v1/shifts/open',
         {
           method: 'POST',
           headers: {
@@ -271,7 +271,7 @@ const ShiftManager = ({ onShiftChange }) => {
         token || localStorage.getItem('token');
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/shifts/close',
+        '/api/v1/shifts/close',
         {
           method: 'POST',
           headers: {

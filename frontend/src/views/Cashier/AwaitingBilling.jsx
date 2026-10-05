@@ -163,7 +163,7 @@ const AwaitingBilling = () => {
         token || localStorage.getItem('token');
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/orders/notifications',
+        '/api/v1/orders/notifications',
         {
           headers: {
             Authorization: `Bearer ${authToken}`,
@@ -219,7 +219,7 @@ const AwaitingBilling = () => {
         token || localStorage.getItem('token');
 
       await fetch(
-        `http://localhost:5000/api/v1/orders/notifications/${notificationId}/read`,
+        `/api/v1/orders/notifications/${notificationId}/read`,
         {
           method: 'PUT',
           headers: {
@@ -249,7 +249,7 @@ const AwaitingBilling = () => {
         token || localStorage.getItem('token');
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/bills/awaiting-bill',
+        '/api/v1/bills/awaiting-bill',
         {
           headers: {
             Authorization: `Bearer ${authToken}`,
@@ -304,7 +304,7 @@ const AwaitingBilling = () => {
         token || localStorage.getItem('token');
 
       const response = await fetch(
-        `http://localhost:5000/api/v1/bills/history?date=${selectedDate}`,
+        `/api/v1/bills/history?date=${selectedDate}`,
         {
           headers: {
             Authorization: `Bearer ${authToken}`,

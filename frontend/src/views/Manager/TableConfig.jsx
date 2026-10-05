@@ -47,7 +47,7 @@ const TableConfig = () => {
     try {
       setError('');
 
-      const response = await fetch('http://localhost:5000/api/v1/tables', {
+      const response = await fetch('/api/v1/tables', {
         headers: {
           Authorization: `Bearer ${token || localStorage.getItem('token')}`,
         },
@@ -79,7 +79,7 @@ const TableConfig = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/v1/tables', {
+      const response = await fetch('/api/v1/tables', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -119,7 +119,7 @@ const TableConfig = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/v1/tables/${tableId}`,
+        `/api/v1/tables/${tableId}`,
         {
           method: 'DELETE',
           headers: {

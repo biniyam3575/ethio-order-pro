@@ -114,11 +114,11 @@ const ShiftControl = () => {
 
     try {
       const [activeRes, historyRes] = await Promise.all([
-        fetch('http://localhost:5000/api/v1/shifts/active-all', {
+        fetch('/api/v1/shifts/active-all', {
           headers,
         }),
 
-        fetch('http://localhost:5000/api/v1/shifts/history', {
+        fetch('/api/v1/shifts/history', {
           headers,
         }),
       ]);
@@ -157,7 +157,7 @@ const ShiftControl = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/v1/shifts/force-close/${shiftId}`,
+        `/api/v1/shifts/force-close/${shiftId}`,
         {
           method: 'POST',
           headers: {

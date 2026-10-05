@@ -131,7 +131,7 @@ const OrderEntry = ({ selectedTable, onOrderSubmitted, onCancel }) => {
         }
 
         const response = await fetch(
-          'http://localhost:5000/api/v1/menu',
+          '/api/v1/menu',
           {
             headers: {
               Authorization: `Bearer ${
@@ -369,7 +369,7 @@ const OrderEntry = ({ selectedTable, onOrderSubmitted, onCancel }) => {
       };
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/orders',
+        '/api/v1/orders',
         {
           method: 'POST',
           headers: {

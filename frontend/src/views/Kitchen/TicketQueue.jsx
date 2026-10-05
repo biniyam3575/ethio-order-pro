@@ -194,7 +194,7 @@ const TicketQueue = ({
 
     try {
       await axios.post(
-        'http://localhost:5000/api/v1/orders/station/dismiss',
+        '/api/v1/orders/station/dismiss',
         {
           orderId,
           station: currentStation,

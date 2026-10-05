@@ -69,7 +69,7 @@ const FloorPlanGrid = ({ onSelectTable, selectedTableId }) => {
       setError('');
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/tables',
+        '/api/v1/tables',
         {
           headers: {
             Authorization: `Bearer ${

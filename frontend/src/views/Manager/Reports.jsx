@@ -165,7 +165,7 @@ const Reports = () => {
     try {
       if (activeTab === 'summary') {
         const res = await fetch(
-          `http://localhost:5000/api/v1/reports/summary?startDate=${cleanStartDate}&endDate=${cleanEndDate}`,
+          `/api/v1/reports/summary?startDate=${cleanStartDate}&endDate=${cleanEndDate}`,
           { headers }
         );
 
@@ -188,7 +188,7 @@ const Reports = () => {
         });
       } else {
         const res = await fetch(
-          `http://localhost:5000/api/v1/reports/station-reconciliation?startDate=${cleanStartDate}&endDate=${cleanEndDate}`,
+          `/api/v1/reports/station-reconciliation?startDate=${cleanStartDate}&endDate=${cleanEndDate}`,
           { headers }
         );
 

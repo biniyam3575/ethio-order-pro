@@ -172,7 +172,7 @@ const OrderStatus = ({
       setError('');
 
       const response = await fetch(
-        'http://localhost:5000/api/v1/orders/live',
+        '/api/v1/orders/live',
         {
           headers: authHeaders,
         }
@@ -220,7 +220,7 @@ const OrderStatus = ({
   ) => {
     try {
       await fetch(
-        `http://localhost:5000/api/v1/orders/notifications/${notificationId}/read`,
+        `/api/v1/orders/notifications/${notificationId}/read`,
         {
           method: 'PUT',
           headers: authHeaders,
@@ -242,7 +242,7 @@ const OrderStatus = ({
 
   const handleCancelOrder = async (orderId, reason) => {
     const response = await fetch(
-      `http://localhost:5000/api/v1/orders/${orderId}/cancel`,
+      `/api/v1/orders/${orderId}/cancel`,
       {
         method: 'PUT',
         headers: {
@@ -274,7 +274,7 @@ const OrderStatus = ({
     reason
   ) => {
     const response = await fetch(
-      `http://localhost:5000/api/v1/orders/${orderId}/items/${itemId}/cancel`,
+      `/api/v1/orders/${orderId}/items/${itemId}/cancel`,
       {
         method: 'PUT',
         headers: {
@@ -321,7 +321,7 @@ const OrderStatus = ({
     setError('');
 
     try {
-      const endpoint = `http://localhost:5000/api/v1/orders/${firstOrderId}/request-bill`;
+      const endpoint = `/api/v1/orders/${firstOrderId}/request-bill`;
 
       const response = await fetch(endpoint, {
         method: 'POST',
