@@ -18,7 +18,10 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-  origin: '*', // We will update this with your frontend URL after deploying
+  origin: [
+    'https://ethio-order-pro-fmta.vercel.app', 
+    'http://localhost:5173'
+  ],
   credentials: true
 }));
 app.use(express.json());
